@@ -6,7 +6,7 @@
 typedef struct
 {
     const uint32_t   magic;
-    const PageSize   size;
+    PageSize   size;
     uint32_t         crc32;
     PageNumber number;
     PageKind   kind;

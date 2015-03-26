@@ -43,13 +43,14 @@ typedef struct DB {
 	/*     ...     */
     int base;
     DBC parameters;
-    Page *meta, *index, *root;
+    Page *meta, *root;
 } DB; /* Need for supporting multiple backends (HASH/BTREE) */
 
 
 
 /* Open DB if it exists, otherwise create DB */
 DB *dbopen(const char *file, DBC *conf);
+DB *dbcreate(const char *file, DBC *conf);
 
 int db_close(DB *db);
 int db_delete(DB *, void *, size_t);
@@ -58,3 +59,4 @@ int db_insert(DB *, void *, size_t, void * , size_t);
 
 /* Sync cached pages with disk */
 int db_sync(const DB *db);
+int db_flush(DB *db);

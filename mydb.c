@@ -14,11 +14,16 @@ int internal_db_insert(DB *db, DBT *key, DBT *data) {
 	return b_insert(db, key, data);
 }
 
+int internal_db_delete(DB *db, DBT *key) {
+    return b_delete(db, key);
+}
+
 DB *dbopen(const char *file, DBC *conf) {
     DB *result = (DB*)malloc(sizeof(DB));
 
     result->insert = internal_db_insert;
     result->select = internal_db_select;
+    result->delete = internal_db_delete;
     
     struct stat sb;
     
@@ -48,12 +53,6 @@ DB *dbopen(const char *file, DBC *conf) {
 
         result->meta = p;
 
-        void *index_raw = (void *)malloc(result->parameters.page_size);
-        read_page(result, index_raw, 1);
-        p = page_parse(index_raw, result->parameters.page_size);
-
-        result->index = p;
-
         if (((uint32_t *)((void *)result->meta->data))[2] != 0) {
             void *root_raw = NULL;
 
@@ -76,17 +75,24 @@ DB *dbopen(const char *file, DBC *conf) {
     Page *meta = page_create(result->parameters.page_size, cPageMetaData);
     ((uint32_t *)((void *)meta->data))[0] = result->parameters.db_size;
     ((uint32_t *)((void *)meta->data))[1] = result->parameters.cache_size;
+    size_t index_count = result->parameters.db_size / (result->parameters.page_size * 8 * (result->parameters.page_size - cPagePadding));
+    ((uint32_t *)((void *)meta->data))[3] = index_count;
+
+    for (size_t i = 1; i <= index_count; ++i) {
+        Page *index = page_create(result->parameters.page_size, cPageIndex);
+        memset((void *)(index->data), 0, (size_t)(result->parameters.page_size - cPagePadding));
+        write_page(result, index, i);
+        free(index);
+    }
+
     write_page(result, meta, 0);
-
     result->meta = meta;
-
-    Page *index = page_create(result->parameters.page_size, cPageIndex);
-    memset((void *)(index->data), 0, (size_t)(result->parameters.page_size - cPagePadding)); // if segment
-    if (write_page(result, index, 1) == -1) { return NULL; }
-
-    result->index = index;
     
     return result;
+}
+
+DB *dbcreate(const char *file, DBC *conf) {
+    return dbopen(file, conf);
 }
 
 
@@ -127,4 +133,9 @@ int db_insert(DB *db, void *key, size_t key_len,
 		.size = val_len
 	};
 	return db->insert(db, &keyt, &valt);
+}
+
+int db_flush(DB *db) {
+    db->sync(db);
+    return 0;
 }

@@ -8,3 +8,5 @@
 int b_select(const DB *, DBT *, DBT *);
 
 int b_insert(DB *, DBT *, DBT *);
+
+int b_delete(DB *, DBT *);

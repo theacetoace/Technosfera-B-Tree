@@ -24,23 +24,60 @@ int write_page(const DB *db, const Page *p, uint32_t offset) {
 }
 
 size_t find_free_index(DB *db) {
-	if (!db->index) { return 0; }
+	if (!db->meta) { return 0; }
 
-	void *data = db->index->data;
+	size_t index_count = ((uint32_t *)((void *)db->meta->data))[3];
 
-	uint8_t pos = 1;
-	size_t ind = 0;
-	size_t ans = 2;
+	void *raw = (void *)malloc(db->parameters.page_size);
+	
+	size_t ans = index_count + 1;
 
-	while (true) {
-		if (!pos) { pos = 1; ind++; }
+	for (size_t i = 1; i <= index_count; ++i) {
+		read_page(db, raw, i);
+    	Page *index = page_parse(raw, db->parameters.page_size);
 
-		if (!(((uint8_t *)data + ind)[0] & pos)) {
-			((uint8_t *)data + ind)[0] |= pos;
-			return ans;
+    	void *data = index->data;
+
+    	uint8_t pos = 1;
+		size_t ind = 0;
+
+    	while (ind < db->parameters.page_size - cPagePadding) {
+			if (!(((uint8_t *)data + ind)[0] & pos)) {
+				((uint8_t *)data + ind)[0] |= pos;
+				write_page(db, index, i);
+				free(raw);
+				return ans;
+			}
+
+			ans++;
+			pos <<= 1;
+			if (!pos) { pos = 1; ind++; }
 		}
-
-		ans++;
-		pos <<= 1;
 	}
+	free(raw);
+	return 0;
+}
+
+void free_index(DB *db, size_t index) {
+	if (!db->meta) { return; }
+
+	size_t index_count = ((uint32_t *)((void *)db->meta->data))[3];
+
+	index -= 1 + index_count;
+
+	size_t ind_num = index / (db->parameters.page_size - cPagePadding);
+
+	index -= ind_num * (db->parameters.page_size - cPagePadding);
+
+	void *raw = (void *)malloc(db->parameters.page_size);
+	read_page(db, raw, ind_num);
+    Page *pindex = page_parse(raw, db->parameters.page_size);
+
+	void *data = pindex->data;
+
+	size_t ind = index >> 3;
+	uint8_t pos = 1 << (index - (ind << 3));
+
+	((uint8_t *)data + ind)[0] &= ~pos;
+	write_page(db, pindex, ind_num);
 }
