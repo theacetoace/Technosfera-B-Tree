@@ -65,12 +65,12 @@ void free_index(DB *db, size_t index) {
 
 	index -= 1 + index_count;
 
-	size_t ind_num = index / (db->parameters.page_size - cPagePadding);
+	size_t ind_num = index / (8 * (db->parameters.page_size - cPagePadding));
 
-	index -= ind_num * (db->parameters.page_size - cPagePadding);
+	index -= ind_num * 8 * (db->parameters.page_size - cPagePadding);
 
 	void *raw = (void *)malloc(db->parameters.page_size);
-	read_page(db, raw, ind_num);
+	read_page(db, raw, 1 + ind_num);
     Page *pindex = page_parse(raw, db->parameters.page_size);
 
 	void *data = pindex->data;
@@ -80,4 +80,6 @@ void free_index(DB *db, size_t index) {
 
 	((uint8_t *)data + ind)[0] &= ~pos;
 	write_page(db, pindex, ind_num);
+
+	free(raw);
 }

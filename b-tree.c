@@ -5,8 +5,6 @@
 #include <memory.h>
 #include <stdlib.h>
 
-bool find = false;
-
 // TODO make faster
 Page *bt_search(const DB *db, Page *node, DBT *key) {
 	if (!node) { return NULL; }
@@ -752,6 +750,54 @@ void delete_first_intermediate(DB *db, Page **pp) {
 	p = NULL;
 }
 
+void fill_lintermediate_delete(Page *p, Page *node) {
+	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2] - 1;
+	size_t begining = 3 * sizeof(uint32_t) + vert_num * sizeof(uint32_t);
+	
+	size_t offset = 3 * sizeof(uint32_t);
+	size_t new_offset = 3 * sizeof(uint32_t);
+	void *node_data = node->data;
+
+	size_t old_key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
+	size_t old_begining = old_key_offset - sizeof(uint32_t);
+
+	((uint32_t *)((uint8_t *)node_data + begining))[0] = ((uint32_t *)((uint8_t *)p->data + old_begining))[0];
+	begining += sizeof(uint32_t);
+	for (size_t i = 0; i < vert_num; ++i) {
+		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
+		((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
+
+		size_t k_size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		memcpy((uint8_t *)node_data + begining, (uint8_t *)p->data + key_offset, k_size + 2 * sizeof(uint32_t));
+		
+		begining += 2 * sizeof(uint32_t) + k_size;
+		offset += sizeof(uint32_t);
+		new_offset += sizeof(uint32_t);
+	}
+
+	((uint16_t *)((void *)node_data))[0] = begining;
+	((uint16_t *)((void *)node_data))[1] = 0;
+}
+
+void delete_last_intermediate(DB *db, Page **pp) {
+	Page *p = *pp;
+
+	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+
+	Page *t = page_create(db->parameters.page_size, p->kind);
+	t->number = p->number;
+
+	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
+
+	((uint32_t *)((uint8_t *)t->data))[2] = vert_num - 1;
+
+	fill_lintermediate_delete(p, t);
+
+	*pp = t;
+	free(p);
+	p = NULL;
+}
+
 void delete_key_leaf(DB *db, Page **pp, DBT *key) {
 	Page *p = *pp;
 
@@ -862,6 +908,8 @@ void redistribute_keys_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 				   (uint8_t *)s->data + s_key_offset + sizeof(uint32_t), 
 				   min(p_size, s_size));
 
+	if (!n) { n = p_size - s_size; }
+
 	size_t iter = ((s_vert_num + p_vert_num) >> 1) - p_vert_num;
 
 	DBT key, data;
@@ -869,7 +917,7 @@ void redistribute_keys_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 	/* redistribute */
 	for (size_t i = 0; i < iter; ++i) {
 		fflush(stdout);
-		if (n < 0 || (!n && p_size < s_size)) {
+		if (n < 0) {
 			find_first_leaf(s, &key, &data);
 		} else {
 			find_last_leaf(s, &key, &data);
@@ -883,14 +931,14 @@ void redistribute_keys_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 	}
 
 	size_t l_link = s->number;
-	if (n < 0 || (!n && p_size < s_size)) { l_link = p->number; }
+	if (n < 0) { l_link = p->number; }
 
 	delete_key_intermediate(db, &parent, l_link);
 
 	size_t r_link = p->number;
-	if (n < 0 || (!n && p_size < s_size)) { r_link = s->number; }
+	if (n < 0) { r_link = s->number; }
 
-	if (n < 0 || (!n && p_size < s_size)) {
+	if (n < 0) {
 		find_first_leaf(s, &key, &data);
 	} else {
 		find_first_leaf(p, &key, &data);
@@ -943,8 +991,6 @@ void find_key_intermediate(Page *p, size_t link, DBT *key) {
 
 		offset += sizeof(uint32_t);
 	}
-
-	if (find) { printf("bad\n"); fflush(stdout); }
 }
 
 void fill_fintermediate(Page *p, Page *node, DBT *key, size_t link) {
@@ -974,10 +1020,7 @@ void fill_fintermediate(Page *p, Page *node, DBT *key, size_t link) {
 		((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
 
 		size_t k_size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
-		memcpy((uint8_t *)node_data + begining, (uint8_t *)p->data + key_offset, k_size + sizeof(uint32_t));
-
-		size_t next_link = ((uint32_t *)((uint8_t *)p->data + key_offset + k_size + sizeof(uint32_t)))[0];
-		((uint32_t *)((uint8_t *)node_data + begining + k_size + sizeof(uint32_t)))[0] = next_link;
+		memcpy((uint8_t *)node_data + begining, (uint8_t *)p->data + key_offset, k_size + 2 * sizeof(uint32_t));
 		
 		begining += 2 * sizeof(uint32_t) + k_size;
 		offset += sizeof(uint32_t);
@@ -1021,35 +1064,31 @@ void redistribute_keys_intermediate(DB *db, Page **pp, Page **ps, Page **pparent
 				   (uint8_t *)s->data + s_key_offset + sizeof(uint32_t), 
 				   min(p_size, s_size));
 
+	if (!n) { n = p_size - s_size; }
+
 	size_t iter = ((s_vert_num + p_vert_num) >> 1) - p_vert_num;
 
 	DBT key, pkey;
 
 	size_t l_link = s->number;
-	if (n < 0 || (!n && p_size < s_size)) { l_link = p->number; }
+	if (n < 0) { l_link = p->number; }
 
 	size_t r_link = p->number;
-	if (n < 0 || (!n && p_size < s_size)) { r_link = s->number; }
+	if (n < 0) { r_link = s->number; }
 
 	find_key_intermediate(parent, l_link, &pkey);
-
-	if (find) { 
-		printf("key found l_link = %zu keysize = %zu pkey.data = %p\n", l_link, pkey.size, pkey.data); fflush(stdout);
-		//write(1, pkey.data, pkey.size);
-		//printf("\n"); fflush(stdout);
-	 }
 
 	/* redistribute */
 	for (size_t i = 0; i < iter; ++i) {
 		size_t link;
-		if (n < 0 || (!n && p_size < s_size)) {
+		if (n < 0) {
 			link = find_first_intermediate(s, &key);
 			delete_first_intermediate(db, &s);
 			size_t pos = p_vert_num + i;
 			insert_into_intermediate(db, &p, pos, &pkey, link);
 		} else {
 			link = find_last_intermediate(s, &key);
-			((uint32_t *)((uint8_t *)s->data))[2]--;
+			delete_last_intermediate(db, &s);
 			insert_first_into_intermediate(db, &p, &pkey, link);
 		}
 		pkey.size = key.size;
@@ -1061,8 +1100,6 @@ void redistribute_keys_intermediate(DB *db, Page **pp, Page **ps, Page **pparent
 	write_parents(db, p);
 
 	delete_key_intermediate(db, &parent, l_link);
-
-	if (find) { printf("redist\n"); fflush(stdout); }
 
 	if (((uint32_t *)((uint8_t *)parent->data))[2]) {
 		size_t pos = find_pos(parent, &key);
@@ -1095,15 +1132,17 @@ void merge_intermediate(DB *db, Page **pp, Page **ps, Page **pparent) {
 				   (uint8_t *)s->data + s_key_offset + sizeof(uint32_t), 
 				   min(p_size, s_size));
 
+	if (!n) { n = p_size - s_size; }
+
 	DBT key, pkey;
 
 	size_t l_link = s->number;
-	if (n < 0 || (!n && p_size < s_size)) { l_link = p->number; }
+	if (n < 0) { l_link = p->number; }
 
 	find_key_intermediate(parent, l_link, &pkey);
 
 	/* merging */
-	if (n < 0 || (!n && p_size < s_size)) {
+	if (n < 0) {
 		{
 			size_t key_offset = ((uint32_t *)((uint8_t *)s->data))[3];
 			size_t link = ((uint32_t *)((uint8_t *)s->data + key_offset - sizeof(uint32_t)))[0];
@@ -1148,7 +1187,7 @@ void merge_intermediate(DB *db, Page **pp, Page **ps, Page **pparent) {
 	size_t parent_vert_num = ((uint32_t *)((uint8_t *)parent->data))[2];
 
 	if (parent_vert_num == 1) {
-		if (n < 0 || (!n && p_size < s_size)) {
+		if (n < 0) {
 			p->kind = cPageRoot;
 			memcpy(db->root, p, db->parameters.page_size);
 			write_page(db, p, p->number);
@@ -1182,12 +1221,6 @@ void handle_intermediate(DB *db, Page **pp) {
 	Page *p = *pp;
 	size_t parent_index = ((uint32_t *)((uint8_t *)p->data))[1];
 
-	if (find) {
-		printf("p:\n");
-		fflush(stdout);
-		print_tree(db, p);
-	}
-
 	void *raw_parent = (void *)malloc(db->parameters.page_size);
 	read_page(db, raw_parent, parent_index);
 	Page *parent = page_parse(raw_parent, db->parameters.page_size);
@@ -1208,9 +1241,7 @@ void handle_intermediate(DB *db, Page **pp) {
 
 	/* case if can redistribute */
 	if (sibling_vert_num > cPageNodesDown) {
-		if (find) { printf("there\n"); fflush(stdout); }
 		redistribute_keys_intermediate(db, &p, &s, &parent);
-		if (find) { printf("there again\n"); fflush(stdout); }
 		write_page(db, p, p->number);
 		write_page(db, s, s->number);
 		write_page(db, parent, parent->number);
@@ -1225,7 +1256,6 @@ void handle_intermediate(DB *db, Page **pp) {
 
 	/* merge case =( */
 	if (sibling_vert_num == cPageNodesDown) {
-		if (find) { printf("here\n"); fflush(stdout); }
 		merge_intermediate(db, &p, &s, &parent);
 		return;
 	}
@@ -1247,13 +1277,15 @@ void merge_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 				   (uint8_t *)s->data + s_key_offset + sizeof(uint32_t), 
 				   min(p_size, s_size));
 
+	if (!n) { n = p_size - s_size; }
+
 	DBT key, data;
 
 	size_t l_link = s->number;
-	if (n < 0 || (!n && p_size < s_size)) { l_link = p->number; }
+	if (n < 0) { l_link = p->number; }
 
 	/* merging */
-	if (n < 0 || (!n && p_size < s_size)) {
+	if (n < 0) {
 		for (size_t i = 0; i < s_vert_num; ++i) {
 			size_t key_offset = ((uint32_t *)((uint8_t *)s->data))[3 + i];
 			key.size = ((uint32_t *)((uint8_t *)s->data + key_offset))[0];
@@ -1292,7 +1324,7 @@ void merge_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 	size_t parent_vert_num = ((uint32_t *)((uint8_t *)parent->data))[2];
 
 	if (parent_vert_num == 1) {
-		if (n < 0 || (!n && p_size < s_size)) {
+		if (n < 0) {
 			p->kind = cPageRootLeaf;
 			memcpy(db->root, p, db->parameters.page_size);
 			write_page(db, p, p->number);
@@ -1494,21 +1526,10 @@ int b_insert(DB *db, DBT *key, DBT *data) {
 	return -1;
 }
 
-const char* checkkey = "Golestan-e Mehdi";
-const size_t checksize = 16;
-
-
 int b_delete(DB *db, DBT *key) {
 	Page *p = bt_search(db, db->root, key);
 
 	if (!p) { return -1; }
-
-	if (find || !memcmp(key->data, checkkey, min(key->size, checksize))) {
-		find = true;
-		printf("======================================\n");
-		fflush(stdout);
-		print_tree(db, db->root);
-	}
 
 	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
 

@@ -27,7 +27,7 @@ static const uint32_t cPageIntermediate = 0xddddddd1UL;
 static const uint32_t cPageRoot         = 0xddddddd2UL;
 static const uint32_t cPageRootLeaf     = 0xddddddd6UL;
 
-static const uint32_t cPageNodesDown = 3;
+static const uint32_t cPageNodesDown = 4;
 static const uint32_t cPageNodesUp = cPageNodesDown << 1;
 static const uint32_t cPagePadding = 20;
 
