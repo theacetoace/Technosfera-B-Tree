@@ -221,12 +221,6 @@ void fill_intermediate(Page *p, Page *node, size_t l, size_t r, size_t pos, DBT 
 	((uint16_t *)((void *)node_data))[1] = 0;
 }
 
-void page_swap(Page **p, Page **q) {
-	Page *swap = *p;
-	*p = *q;
-	*q = swap;
-}
-
 void insert_into_leaf(DB *db, Page **pp, size_t pos,DBT *key, DBT *data) {
 	Page *p = *pp;
 
@@ -293,7 +287,6 @@ void write_parents(DB *db, Page *p) {
 		
 		offset += sizeof(uint32_t);
 	}
-	//size_t begining = ((uint16_t *)((void *)p->data))[0];
 	size_t key_offset = ((uint32_t *)((uint8_t *)p->data))[2 + vert_num];
 	size_t size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
 	size_t begining = key_offset + size + sizeof(uint32_t);
@@ -921,7 +914,6 @@ void redistribute_keys_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 			find_first_leaf(s, &key, &data);
 		} else {
 			find_last_leaf(s, &key, &data);
-
 		}
 		delete_key_leaf(db, &s, &key);
 		size_t pos = find_pos(p, &key);
@@ -1136,66 +1128,39 @@ void merge_intermediate(DB *db, Page **pp, Page **ps, Page **pparent) {
 
 	DBT key, pkey;
 
-	size_t l_link = s->number;
-	if (n < 0) { l_link = p->number; }
+	size_t l_link = s->number, ms_vert_num = p_vert_num, mp_vert_num = s_vert_num;
+	Page *mp = s, *ms = p;
+	if (n < 0) { l_link = p->number; mp = p; ms = s; ms_vert_num = s_vert_num; mp_vert_num = p_vert_num; }
 
 	find_key_intermediate(parent, l_link, &pkey);
 
 	/* merging */
-	if (n < 0) {
-		{
-			size_t key_offset = ((uint32_t *)((uint8_t *)s->data))[3];
-			size_t link = ((uint32_t *)((uint8_t *)s->data + key_offset - sizeof(uint32_t)))[0];
-			insert_into_intermediate(db, &p, p_vert_num, &pkey, link);
-			free(pkey.data);
-		}
-		for (size_t i = 1; i <= s_vert_num; ++i) {
-			size_t key_offset = ((uint32_t *)((uint8_t *)s->data))[2 + i];
-			key.size = ((uint32_t *)((uint8_t *)s->data + key_offset))[0];
-			key.data = (void *)malloc(key.size);
-			memcpy(key.data, (uint8_t *)s->data + key_offset + sizeof(uint32_t), key.size);
-			size_t link = ((uint32_t *)((uint8_t *)s->data + key_offset + key.size + sizeof(uint32_t)))[0];
-
-			insert_into_intermediate(db, &p, p_vert_num + i, &key, link);
-			free(key.data);
-		}
-		free_index(db, s->number);
-		write_parents(db, p);
-		write_page(db, p, p->number);
-	} else {
-		{
-			size_t key_offset = ((uint32_t *)((uint8_t *)p->data))[3];
-			size_t link = ((uint32_t *)((uint8_t *)p->data + key_offset - sizeof(uint32_t)))[0];
-			insert_into_intermediate(db, &s, s_vert_num, &pkey, link);
-			free(pkey.data);
-		}
-		for (size_t i = 1; i <= p_vert_num; ++i) {
-			size_t key_offset = ((uint32_t *)((uint8_t *)p->data))[2 + i];
-			key.size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
-			key.data = (void *)malloc(key.size);
-			memcpy(key.data, (uint8_t *)p->data + key_offset + sizeof(uint32_t), key.size);
-			size_t link = ((uint32_t *)((uint8_t *)p->data + key_offset + key.size + sizeof(uint32_t)))[0];
-
-			insert_into_intermediate(db, &s, s_vert_num + i, &key, link);
-			free(key.data);
-		}
-		free_index(db, p->number);
-		write_parents(db, s);
-		write_page(db, s, s->number);
+	{
+		size_t key_offset = ((uint32_t *)((uint8_t *)ms->data))[3];
+		size_t link = ((uint32_t *)((uint8_t *)ms->data + key_offset - sizeof(uint32_t)))[0];
+		insert_into_intermediate(db, &mp, mp_vert_num, &pkey, link);
+		free(pkey.data);
 	}
+	for (size_t i = 1; i <= ms_vert_num; ++i) {
+		size_t key_offset = ((uint32_t *)((uint8_t *)ms->data))[2 + i];
+		key.size = ((uint32_t *)((uint8_t *)ms->data + key_offset))[0];
+		key.data = (void *)malloc(key.size);
+		memcpy(key.data, (uint8_t *)ms->data + key_offset + sizeof(uint32_t), key.size);
+		size_t link = ((uint32_t *)((uint8_t *)ms->data + key_offset + key.size + sizeof(uint32_t)))[0];
+
+		insert_into_intermediate(db, &mp, mp_vert_num + i, &key, link);
+		free(key.data);
+	}
+	free_index(db, ms->number);
+	write_parents(db, mp);
+	write_page(db, mp, mp->number);
 
 	size_t parent_vert_num = ((uint32_t *)((uint8_t *)parent->data))[2];
 
 	if (parent_vert_num == 1) {
-		if (n < 0) {
-			p->kind = cPageRoot;
-			memcpy(db->root, p, db->parameters.page_size);
-			write_page(db, p, p->number);
-		} else {
-			s->kind = cPageRoot;
-			memcpy(db->root, s, db->parameters.page_size);
-			write_page(db, s, s->number);
-		}
+		mp->kind = cPageRoot;
+		memcpy(db->root, mp, db->parameters.page_size);
+		write_page(db, mp, mp->number);
 		free_index(db, parent->number);
 	}
 	else if (parent_vert_num > cPageNodesDown || (parent_vert_num <= cPageNodesDown && parent->kind == cPageRoot)) {
@@ -1208,12 +1173,12 @@ void merge_intermediate(DB *db, Page **pp, Page **ps, Page **pparent) {
 	else {
 		delete_key_intermediate(db, &parent, l_link);
 		handle_intermediate(db, &parent);
-		free(p); free(s);
+		free(mp); free(ms);
 		return;
 	}
 
-	free(p);
-	free(s);
+	free(mp); 
+	free(ms);
 	free(parent);
 }
 
@@ -1281,59 +1246,34 @@ void merge_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 
 	DBT key, data;
 
-	size_t l_link = s->number;
-	if (n < 0) { l_link = p->number; }
+	size_t l_link = s->number, m_vert_num = p_vert_num;
+	Page *mp = s, *ms = p;
+	if (n < 0) { l_link = p->number; mp = p; ms = s; m_vert_num = s_vert_num; }
 
 	/* merging */
-	if (n < 0) {
-		for (size_t i = 0; i < s_vert_num; ++i) {
-			size_t key_offset = ((uint32_t *)((uint8_t *)s->data))[3 + i];
-			key.size = ((uint32_t *)((uint8_t *)s->data + key_offset))[0];
-			key.data = (void *)malloc(key.size);
-			memcpy(key.data, (uint8_t *)s->data + key_offset + sizeof(uint32_t), key.size);
-			size_t data_offset = ((uint32_t *)((uint8_t *)s->data + key_offset + key.size + sizeof(uint32_t)))[0];
-			data.size = ((uint32_t *)((uint8_t *)s->data + data_offset))[0];
-			data.data = (void *)malloc(data.size);
-			memcpy(data.data, (uint8_t *)s->data + data_offset + sizeof(uint32_t), data.size);
-			size_t pos = find_pos(p, &key);
-			insert_into_leaf(db, &p, pos, &key, &data);
-			free(key.data);
-			free(data.data);
-		}
-		free_index(db, s->number);
-		write_page(db, p, p->number);
-	} else {
-		for (size_t i = 0; i < p_vert_num; ++i) {
-			size_t key_offset = ((uint32_t *)((uint8_t *)p->data))[3 + i];
-			key.size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
-			key.data = (void *)malloc(key.size);
-			memcpy(key.data, (uint8_t *)p->data + key_offset + sizeof(uint32_t), key.size);
-			size_t data_offset = ((uint32_t *)((uint8_t *)p->data + key_offset + key.size + sizeof(uint32_t)))[0];
-			data.size = ((uint32_t *)((uint8_t *)p->data + data_offset))[0];
-			data.data = (void *)malloc(data.size);
-			memcpy(data.data, (uint8_t *)p->data + data_offset + sizeof(uint32_t), data.size);
-			size_t pos = find_pos(s, &key);
-			insert_into_leaf(db, &s, pos, &key, &data);
-			free(key.data);
-			free(data.data);
-		}
-		free_index(db, p->number);
-		write_page(db, s, s->number);
+	for (size_t i = 0; i < m_vert_num; ++i) {
+		size_t key_offset = ((uint32_t *)((uint8_t *)ms->data))[3 + i];
+		key.size = ((uint32_t *)((uint8_t *)ms->data + key_offset))[0];
+		key.data = (void *)malloc(key.size);
+		memcpy(key.data, (uint8_t *)ms->data + key_offset + sizeof(uint32_t), key.size);
+		size_t data_offset = ((uint32_t *)((uint8_t *)ms->data + key_offset + key.size + sizeof(uint32_t)))[0];
+		data.size = ((uint32_t *)((uint8_t *)ms->data + data_offset))[0];
+		data.data = (void *)malloc(data.size);
+		memcpy(data.data, (uint8_t *)ms->data + data_offset + sizeof(uint32_t), data.size);
+		size_t pos = find_pos(mp, &key);
+		insert_into_leaf(db, &mp, pos, &key, &data);
+		free(key.data);
+		free(data.data);
 	}
+	free_index(db, ms->number);
+	write_page(db, mp, mp->number);
 
 	size_t parent_vert_num = ((uint32_t *)((uint8_t *)parent->data))[2];
 
 	if (parent_vert_num == 1) {
-		if (n < 0) {
-			p->kind = cPageRootLeaf;
-			memcpy(db->root, p, db->parameters.page_size);
-			write_page(db, p, p->number);
-			
-		} else {
-			s->kind = cPageRootLeaf;
-			memcpy(db->root, s, db->parameters.page_size);
-			write_page(db, s, s->number);
-		}
+		mp->kind = cPageRootLeaf;
+		memcpy(db->root, mp, db->parameters.page_size);
+		write_page(db, mp, mp->number);
 		free_index(db, parent->number);
 	}
 	else if (parent_vert_num > cPageNodesDown || (parent_vert_num <= cPageNodesDown && parent->kind == cPageRoot)) {
@@ -1346,12 +1286,12 @@ void merge_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 	else {
 		delete_key_intermediate(db, &parent, l_link);
 		handle_intermediate(db, &parent);
-		free(p); free(s);
+		free(mp); free(ms);
 		return;
 	}
 
-	free(p);
-	free(s);
+	free(mp);
+	free(ms);
 	free(parent);
 }
 
