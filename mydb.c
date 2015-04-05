@@ -66,7 +66,7 @@ DB *dbopen(const char *file, DBC *conf) {
         return result;
     }
 
-    result->base = open(file, O_CREAT | O_RDWR);
+    result->base = open(file, O_CREAT | O_RDWR, 0x777);
     
     result->parameters.db_size = conf->db_size;
     result->parameters.page_size = conf->page_size;
