@@ -1,4 +1,5 @@
-#pragma once
+#ifndef STORAGE_H
+#define STORAGE_H
 
 #include <stdio.h>
 #include "mydb.h"
@@ -12,3 +13,4 @@ size_t find_free_index(DB *);
 
 void free_index(DB *, size_t);
 
+#endif // STORAGE_H

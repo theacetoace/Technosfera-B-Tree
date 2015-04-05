@@ -1,5 +1,4 @@
 #include "b-tree.h"
-#include "types.h"
 #include "storage.h"
 
 #include <memory.h>
@@ -9,14 +8,14 @@
 Page *bt_search(const DB *db, Page *node, DBT *key) {
 	if (!node) { return NULL; }
 	if (node->kind == cPageRoot || node->kind == cPageIntermediate) {
-		size_t vert_num = ((uint32_t *)((void *)node->data))[2];
+		size_t vert_num = cast32(node->data, 0, 2);
 		size_t offset = 3 * sizeof(uint32_t);
 		for (size_t i = 0; i < vert_num; ++i) {
-			size_t key_offset = ((uint32_t *)((uint8_t *)node->data + offset))[0];
-			size_t size = ((uint32_t *)((uint8_t *)node->data + key_offset))[0];
+			size_t key_offset = cast32(node->data, offset, 0);
+			size_t size = cast32(node->data, key_offset, 0);
 			int n = memcmp((uint8_t *)node->data + key_offset + sizeof(uint32_t), key->data, min(size, key->size));
 			if (n > 0 || (!n && size > key->size)) {
-				size_t link = ((uint32_t *)((uint8_t *)node->data + key_offset - sizeof(uint32_t)))[0];
+				size_t link = cast32(node->data, key_offset - sizeof(uint32_t), 0);
 				void *raw = (void *)malloc(db->parameters.page_size);
 				read_page(db, raw, link);
 				Page *next = page_parse(raw, db->parameters.page_size);
@@ -26,8 +25,8 @@ Page *bt_search(const DB *db, Page *node, DBT *key) {
 			}
 			offset += sizeof(uint32_t);
 		}
-		size_t begining = ((uint16_t *)((void *)node->data))[0];
-		size_t link = ((uint32_t *)((uint8_t *)node->data + begining - sizeof(uint32_t)))[0];
+		size_t begining = cast16(node->data, 0, 0);
+		size_t link = cast32(node->data, begining - sizeof(uint32_t), 0);
 		void *raw = (void *)malloc(db->parameters.page_size);
 		read_page(db, raw, link);
 		Page *next = page_parse(raw, db->parameters.page_size);
@@ -42,24 +41,24 @@ Page *bt_search(const DB *db, Page *node, DBT *key) {
 }
 
 void print_tree(const DB *db, Page *p) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	printf("vertex number = %u vertex kind = %x vertex parent = %u vertex size = %u\n", 
-		p->number, p->kind, ((uint32_t *)((uint8_t *)p->data))[1], ((uint32_t *)((uint8_t *)p->data))[2]);
+		p->number, p->kind, cast32(p->data, 0, 1), cast32(p->data, 0, 2));
 	fflush(stdout);
 
 	size_t offset = 3 * sizeof(uint32_t);
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
+		size_t key_offset = cast32(p->data, offset, 0);
 		if (p->kind == cPageRoot || p->kind == cPageIntermediate) {
-			printf("%u/", ((uint32_t *)((uint8_t *)p->data + key_offset - sizeof(uint32_t)))[0]);
+			printf("%u/", cast32(p->data, key_offset - sizeof(uint32_t), 0));
 			fflush(stdout);
 		}
-		size_t size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
-		write(1, (uint8_t *)p->data + key_offset + sizeof(uint32_t), size);
+		size_t size = cast32(p->data, key_offset, 0);
+		if (write(1, (uint8_t *)p->data + key_offset + sizeof(uint32_t), size) == -1) { return; }
 		printf("/");
 		if (i == vert_num - 1 && (p->kind == cPageRoot || p->kind == cPageIntermediate)) {
-			printf("%u", ((uint32_t *)((uint8_t *)p->data + key_offset + size + sizeof(uint32_t)))[0]);
+			printf("%u", cast32(p->data, key_offset + size + sizeof(uint32_t), 0));
 			fflush(stdout);
 		}
 		fflush(stdout);
@@ -77,8 +76,8 @@ void print_tree(const DB *db, Page *p) {
 
 	offset = 3 * sizeof(uint32_t);
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-		size_t link = ((uint32_t *)((uint8_t *)p->data + key_offset - sizeof(uint32_t)))[0];
+		size_t key_offset = cast32(p->data, offset, 0);
+		size_t link = cast32(p->data, key_offset - sizeof(uint32_t), 0);
 
 		read_page(db, raw, link);
 		Page *next = page_parse(raw, db->parameters.page_size);
@@ -88,8 +87,8 @@ void print_tree(const DB *db, Page *p) {
 		offset += sizeof(uint32_t);
 	}
 
-	size_t key_offset = ((uint16_t *)((uint8_t *)p->data))[0];
-	size_t link = ((uint32_t *)((uint8_t *)p->data + key_offset - sizeof(uint32_t)))[0];
+	size_t key_offset = cast16(p->data, 0, 0);
+	size_t link = cast32(p->data, key_offset - sizeof(uint32_t), 0);
 	
 	read_page(db, raw, link);
 	Page *next = page_parse(raw, db->parameters.page_size);
@@ -107,15 +106,15 @@ int b_select(const DB *db, DBT *key, DBT *data) {
 		return -1; 
 	}
 	
-	size_t vert_num = ((uint32_t *)((void *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 	size_t offset = 3 * sizeof(uint32_t);
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-		size_t size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		size_t key_offset = cast32(p->data, offset, 0);
+		size_t size = cast32(p->data, key_offset, 0);
 		int n = memcmp((uint8_t *)p->data + key_offset + sizeof(uint32_t), key->data, min(size, key->size));
 		if (!n && size == key->size) {
-			size_t data_offset = ((uint32_t *)((uint8_t *)p->data + key_offset + size + sizeof(uint32_t)))[0];
-			data->size = ((uint32_t *)((uint8_t *)p->data + data_offset))[0];
+			size_t data_offset = cast32(p->data, key_offset + size + sizeof(uint32_t), 0);
+			data->size = cast32(p->data, data_offset, 0);
 			data->data = (void *)malloc(data->size);
 			memcpy(data->data, (uint8_t *)p->data + data_offset + sizeof(uint32_t), data->size);
 			if (p != db->root) { free(p); p = NULL; }
@@ -142,13 +141,12 @@ void fill_leaf(DB *db, Page *p, Page *node, size_t l, size_t r, size_t pos, DBT 
 		if (pos == i) {
 			ending -= sizeof(uint32_t) + data->size;
 
-			((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
-			((uint32_t *)((uint8_t *)node_data + begining))[0] = key->size;
+			write32(node_data, new_offset, 0, begining);
+			write32(node_data, begining, 0, key->size);
 			memcpy((uint8_t *)node_data + begining + sizeof(uint32_t), key->data, key->size);
-			((uint32_t *)((uint8_t *)node_data + begining + key->size + sizeof(uint32_t)))[0] = ending;
+			write32(node_data, begining + key->size + sizeof(uint32_t), 0, ending);
 			
-
-			((uint32_t *)((uint8_t *)node_data + ending))[0] = data->size;
+			write32(node_data, ending, 0, data->size);
 			memcpy((uint8_t *)node_data + ending + sizeof(uint32_t), data->data, data->size);
 
 			begining += 2 * sizeof(uint32_t) + key->size;
@@ -157,26 +155,26 @@ void fill_leaf(DB *db, Page *p, Page *node, size_t l, size_t r, size_t pos, DBT 
 			continue;
 		}
 
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-		((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
+		size_t key_offset = cast32(p->data, offset, 0);
+		write32(node_data, new_offset, 0, begining);
 
-		size_t k_size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		size_t k_size = cast32(p->data, key_offset, 0);
 		memcpy((uint8_t *)node_data + begining, (uint8_t *)p->data + key_offset, k_size + sizeof(uint32_t));
 
-		size_t data_offset = ((uint32_t *)((uint8_t *)p->data + key_offset + k_size + sizeof(uint32_t)))[0];
-		size_t d_size = ((uint32_t *)((uint8_t *)p->data + data_offset))[0];
+		size_t data_offset = cast32(p->data, key_offset + k_size + sizeof(uint32_t), 0);
+		size_t d_size = cast32(p->data, data_offset, 0);
 
 		ending -= d_size + sizeof(uint32_t);
 		memcpy((uint8_t *)node_data + ending, (uint8_t *)p->data + data_offset, d_size + sizeof(uint32_t));
-		((uint32_t *)((uint8_t *)node_data + begining + k_size + sizeof(uint32_t)))[0] = ending;
+		write32(node_data, begining + k_size + sizeof(uint32_t), 0, ending);
 		begining += 2 * sizeof(uint32_t) + k_size;
 
 		offset += sizeof(uint32_t);
 		new_offset += sizeof(uint32_t);
 	}
 
-	((uint16_t *)((void *)node_data))[0] = begining;
-	((uint16_t *)((void *)node_data))[1] = ending;
+	write16(node_data, 0, 0, begining);
+	write16(node_data, 0, 1, ending);
 }
 
 void fill_intermediate(Page *p, Page *node, size_t l, size_t r, size_t pos, DBT *key, size_t link) {
@@ -186,52 +184,52 @@ void fill_intermediate(Page *p, Page *node, size_t l, size_t r, size_t pos, DBT 
 	size_t new_offset = 3 * sizeof(uint32_t);
 	void *node_data = node->data;
 
-	size_t old_key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
+	size_t old_key_offset = cast32(p->data, offset, 0);
 	size_t old_begining = old_key_offset - sizeof(uint32_t);
 
-	((uint32_t *)((uint8_t *)node_data + begining))[0] = ((uint32_t *)((uint8_t *)p->data + old_begining))[0];
+	write32(node_data, begining, 0, cast32(p->data, old_begining, 0));
 	begining += sizeof(uint32_t);
 	for (size_t i = l; i < r; ++i) {
 		if (pos == i) {
-			((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
-			((uint32_t *)((uint8_t *)node_data + begining))[0] = key->size;
+			write32(node_data, new_offset, 0, begining);
+			write32(node_data, begining, 0, key->size);
 			memcpy((uint8_t *)node_data + begining + sizeof(uint32_t), key->data, key->size);
-			((uint32_t *)((uint8_t *)node_data + begining + key->size + sizeof(uint32_t)))[0] = link;
+			write32(node_data, begining + key->size + sizeof(uint32_t), 0, link);
 
 			begining += 2 * sizeof(uint32_t) + key->size;
 			new_offset += sizeof(uint32_t);
 			continue;
 		}
 
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-		((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
+		size_t key_offset = cast32(p->data, offset, 0);
+		write32(node_data, new_offset, 0, begining);
 
-		size_t k_size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		size_t k_size = cast32(p->data, key_offset, 0);
 		memcpy((uint8_t *)node_data + begining, (uint8_t *)p->data + key_offset, k_size + sizeof(uint32_t));
 
-		size_t next_link = ((uint32_t *)((uint8_t *)p->data + key_offset + k_size + sizeof(uint32_t)))[0];
-		((uint32_t *)((uint8_t *)node_data + begining + k_size + sizeof(uint32_t)))[0] = next_link;
+		size_t next_link = cast32(p->data, key_offset + k_size + sizeof(uint32_t), 0);
+		write32(node_data, begining + k_size + sizeof(uint32_t), 0, next_link);
 		
 		begining += 2 * sizeof(uint32_t) + k_size;
 		offset += sizeof(uint32_t);
 		new_offset += sizeof(uint32_t);
 	}
 
-	((uint16_t *)((void *)node_data))[0] = begining;
-	((uint16_t *)((void *)node_data))[1] = 0;
+	write16(node_data, 0, 0, begining);
+	write16(node_data, 0, 1, 0);
 }
 
 void insert_into_leaf(DB *db, Page **pp, size_t pos,DBT *key, DBT *data) {
 	Page *p = *pp;
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	Page *t = page_create(db->parameters.page_size, p->kind);
 	t->number = p->number;
 
-	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
+	write32(t->data, 0, 1, cast32(p->data, 0, 1));
 
-	((uint32_t *)((uint8_t *)t->data))[2] = vert_num + 1;
+	write32(t->data, 0, 2, vert_num + 1);
 
 	fill_leaf(db, p, t, 0, vert_num + 1, pos, key, data);
 
@@ -245,7 +243,7 @@ void divide_leaf(DB *db, Page **pp, Page **ps, size_t pos, DBT *key, DBT *data) 
 	Page *t = page_create(db->parameters.page_size, cPageLeaf);
 	Page *p = *pp;
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	size_t tvert_num = (vert_num + 1) >> 1;
 	size_t svert_num = vert_num - tvert_num + 1;
@@ -254,11 +252,11 @@ void divide_leaf(DB *db, Page **pp, Page **ps, size_t pos, DBT *key, DBT *data) 
 	t->number = p->number;
 	s->number = find_free_index(db);
 
-	((uint32_t *)((void *)s->data))[1] = ((uint32_t *)((void *)p->data))[1];
-	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
+	write32(s->data, 0, 1, cast32(p->data, 0, 1));
+	write32(t->data, 0, 1, cast32(p->data, 0, 1));
 
-	((uint32_t *)((void *)s->data))[2] = svert_num;
-	((uint32_t *)((void *)t->data))[2] = tvert_num;
+	write32(s->data, 0, 2, svert_num);
+	write32(t->data, 0, 2, tvert_num);
 
 	/* insert verticies */
 
@@ -274,27 +272,27 @@ void divide_leaf(DB *db, Page **pp, Page **ps, size_t pos, DBT *key, DBT *data) 
 void write_parents(DB *db, Page *p) {
 	void *raw = (void *)malloc(db->parameters.page_size);
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 	size_t offset = 3 * sizeof(uint32_t);
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-		size_t link = ((uint32_t *)((uint8_t *)p->data + key_offset - sizeof(uint32_t)))[0];
+		size_t key_offset = cast32(p->data, offset, 0);
+		size_t link = cast32(p->data, key_offset - sizeof(uint32_t), 0);
 		
 		read_page(db, raw, link);
 		Page *next = page_parse(raw, db->parameters.page_size);
-		((uint32_t *)((uint8_t *)next->data))[1] = p->number;
+		write32(next->data, 0, 1, p->number);
 		write_page(db, next, next->number);
 		
 		offset += sizeof(uint32_t);
 	}
-	size_t key_offset = ((uint32_t *)((uint8_t *)p->data))[2 + vert_num];
-	size_t size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+	size_t key_offset = cast32(p->data, 0, 2 + vert_num);
+	size_t size = cast32(p->data, key_offset, 0);
 	size_t begining = key_offset + size + sizeof(uint32_t);
-	size_t link = ((uint32_t *)((uint8_t *)p->data + begining))[0];
+	size_t link = cast32(p->data, begining, 0);
 
 	read_page(db, raw, link);
 	Page *next = page_parse(raw, db->parameters.page_size);
-	((uint32_t *)((uint8_t *)next->data))[1] = p->number;
+	write32(next->data, 0, 1, p->number);
 	write_page(db, next, next->number);
 
 	free(raw); 
@@ -306,7 +304,7 @@ void divide_intermediate(DB *db, Page **pp, Page **ps, size_t pos, DBT *key, siz
 	Page *t = page_create(db->parameters.page_size, cPageIntermediate);
 	Page *p = *pp;
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	size_t tvert_num = (vert_num + 1) >> 1;
 	size_t svert_num = vert_num - tvert_num;
@@ -315,11 +313,11 @@ void divide_intermediate(DB *db, Page **pp, Page **ps, size_t pos, DBT *key, siz
 	t->number = p->number;
 	s->number = find_free_index(db);
 
-	((uint32_t *)((void *)s->data))[1] = ((uint32_t *)((void *)p->data))[1];
-	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
+	write32(s->data, 0, 1, cast32(p->data, 0, 1));
+	write32(t->data, 0, 1, cast32(p->data, 0, 1));
 
-	((uint32_t *)((void *)s->data))[2] = svert_num;
-	((uint32_t *)((void *)t->data))[2] = tvert_num;
+	write32(s->data, 0, 2, svert_num);
+	write32(t->data, 0, 2, tvert_num);
 
 	/* insert verticies */
 	fill_intermediate(p, t, 0, tvert_num, pos, key, link);
@@ -328,16 +326,15 @@ void divide_intermediate(DB *db, Page **pp, Page **ps, size_t pos, DBT *key, siz
 	fill_intermediate(p, s, l, l + svert_num, p_pos, key, link);
 
 	if (pos == tvert_num) {
-		fflush(stdout);
-		size_t key_offset = ((uint32_t *)((uint8_t *)s->data + 3 * sizeof(uint32_t)))[0];
-		((uint32_t *)((uint8_t *)s->data + key_offset - sizeof(uint32_t)))[0] = link;
+		size_t key_offset = cast32(s->data, 3 * sizeof(uint32_t), 0);
+		write32(s->data, key_offset - sizeof(uint32_t), 0, link);
 		res->size = key->size;
 		res->data = (void *)malloc(res->size);
 		memcpy(res->data, key->data, res->size);
 	} else {
 		if (pos < tvert_num) { tvert_num--; }
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + 3 * sizeof(uint32_t)))[tvert_num];
-		res->size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		size_t key_offset = cast32(p->data, 3 * sizeof(uint32_t), tvert_num);
+		res->size = cast32(p->data, key_offset, 0);
 		res->data = (void *)malloc(res->size);
 		memcpy(res->data, (uint8_t *)p->data + key_offset + sizeof(uint32_t), res->size);
 	}
@@ -354,11 +351,11 @@ void insert_into_intermediate(DB *db, Page **pparent, size_t pos, DBT *key, size
 	Page *p = *pparent;
 	Page *t = page_create(db->parameters.page_size, p->kind);
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	t->number = p->number;
-	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
-	((uint32_t *)((uint8_t *)t->data))[2] = vert_num + 1;
+	write32(t->data, 0, 1, cast32(p->data, 0, 1));
+	write32(t->data, 0, 2, vert_num + 1);
 
 	fill_intermediate(p, t, 0, vert_num + 1, pos, key, link);
 
@@ -374,37 +371,37 @@ void create_root_leaf(DB *db, DBT *key, DBT *data) {
 	/* set data */
 	void *node_data = db->root->data;
 	/* padding from begining and ending */
-	((uint16_t *)((void *)node_data))[0] = key->size + 3 * sizeof(uint32_t) + 3 * sizeof(uint32_t);
-	((uint16_t *)((void *)node_data))[1] = db->parameters.page_size - cPagePadding - data->size - sizeof(uint32_t);
+	write16(node_data, 0, 0, key->size + 3 * sizeof(uint32_t) + 3 * sizeof(uint32_t));
+	write16(node_data, 0, 1, db->parameters.page_size - cPagePadding - data->size - sizeof(uint32_t));
 	/* parent */
-	((uint32_t *)((void *)node_data))[1] = 0;
+	write32(node_data, 0, 1, 0);
 
 	/* number of vertices */
 	size_t offset = 2 * sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)node_data + offset))[0] = 1;
+	write32(node_data, offset, 0, 1);
 
 	/* key offset array */
 	offset += sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)node_data + offset))[0] = offset + sizeof(uint32_t);
+	write32(node_data, offset, 0, offset + sizeof(uint32_t));
 
 	/* key { size, val, offset_data_link } */
 	offset += sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)node_data + offset))[0] = key->size;
+	write32(node_data, offset, 0, key->size);
 	offset += sizeof(uint32_t);
 	memcpy((uint8_t *)node_data + offset, key->data, key->size);
 	offset += key->size;
-	((uint32_t *)((uint8_t *)node_data + offset))[0] = db->parameters.page_size - cPagePadding - data->size - sizeof(uint32_t);
+	write32(node_data, offset, 0, db->parameters.page_size - cPagePadding - data->size - sizeof(uint32_t));
 
 	/* data { size, val } */
 	offset = db->parameters.page_size - cPagePadding - data->size - sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)node_data + offset))[0] = data->size;
+	write32(node_data, offset, 0, data->size);
 	offset += sizeof(uint32_t);
 	memcpy((uint8_t *)node_data + offset, data->data, data->size);
 	offset += data->size;
 
 	/* finding page to store */
 	size_t index = find_free_index(db);
-	((uint32_t *)((void *)db->meta->data))[2] = index;
+	write32(db->meta->data, 0, 2, index);
 	db->root->number = index;
 	write_page(db, db->root, index);
 	write_page(db, db->meta, 0);
@@ -415,28 +412,29 @@ void create_root(DB *db, Page **pp, DBT *key, size_t link_l, size_t link_r) {
 	p->number = find_free_index(db);
 
 	/* padding from begining and ending */
-	((uint16_t *)((void *)p->data))[0] = key->size + 3 * sizeof(uint32_t) + 4 * sizeof(uint32_t);
-	((uint16_t *)((void *)p->data))[1] = 0;
+	write16(p->data, 0, 0, key->size + 3 * sizeof(uint32_t) + 4 * sizeof(uint32_t));
+	write16(p->data, 0, 1, 0);
 	/* parent */
-	((uint32_t *)((void *)p->data))[1] = 0;
+	write32(p->data, 0, 1, 0);
 
 	/* number of vertices */
 	size_t offset = 2 * sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)p->data + offset))[0] = 1;
+	write32(p->data, offset, 0, 1);
 
 	/* key offset array */
 	offset += sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)p->data + offset))[0] = offset + 2 * sizeof(uint32_t);
+	write32(p->data, offset, 0, offset + 2 * sizeof(uint32_t));
 
 	/* key { size, val, next_link } */
 	offset += sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)p->data + offset))[0] = link_l;
+	write32(p->data, offset, 0, link_l);
 	offset += sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)p->data + offset))[0] = key->size;
+	write32(p->data, offset, 0, key->size);
 	offset += sizeof(uint32_t);
 	memcpy((uint8_t *)p->data + offset, key->data, key->size);
 	offset += key->size;
-	((uint32_t *)((uint8_t *)p->data + offset))[0] = link_r;
+	write32(p->data, offset, 0, link_r);
+	
 	*pp = p;
 }
 
@@ -446,28 +444,28 @@ void create_intermediate(DB *db, Page **pp, DBT *key, size_t link_l, size_t link
 	t->number = p->number;
 
 	/* padding from begining and ending */
-	((uint16_t *)((void *)t->data))[0] = key->size + 3 * sizeof(uint32_t) + 4 * sizeof(uint32_t);
-	((uint16_t *)((void *)t->data))[1] = 0;
+	write16(t->data, 0, 0, key->size + 3 * sizeof(uint32_t) + 4 * sizeof(uint32_t));
+	write16(t->data, 0, 1, 0);
 	/* parent */
-	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
+	write32(t->data, 0, 1, cast32(p->data, 0, 1));
 
 	/* number of vertices */
 	size_t offset = 2 * sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)t->data + offset))[0] = 1;
+	write32(t->data, offset, 0, 1);
 
 	/* key offset array */
 	offset += sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)t->data + offset))[0] = offset + 2 * sizeof(uint32_t);
+	write32(t->data, offset, 0, offset + 2 * sizeof(uint32_t));
 
 	/* key { size, val, next_link } */
 	offset += sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)t->data + offset))[0] = link_l;
+	write32(t->data, offset, 0, link_l);
 	offset += sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)t->data + offset))[0] = key->size;
+	write32(t->data, offset, 0, key->size);
 	offset += sizeof(uint32_t);
 	memcpy((uint8_t *)t->data + offset, key->data, key->size);
 	offset += key->size;
-	((uint32_t *)((uint8_t *)t->data + offset))[0] = link_r;
+	write32(t->data, offset, 0, link_r);
 
 	*pp = t;
 	free(p);
@@ -475,12 +473,12 @@ void create_intermediate(DB *db, Page **pp, DBT *key, size_t link_l, size_t link
 
 // TODO make faster
 size_t find_pos(Page *p, DBT *key) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 	size_t offset = 3 * sizeof(uint32_t);
 	size_t pos = 0;
 	for (; pos < vert_num; ++pos) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-		size_t size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		size_t key_offset = cast32(p->data, offset, 0);
+		size_t size = cast32(p->data, key_offset, 0);
 		int n = memcmp((uint8_t *)p->data + key_offset + sizeof(uint32_t), key->data, min(size, key->size));
 		if (n > 0 || (!n && size > key->size)) {
 			break;
@@ -500,7 +498,7 @@ int divide_intermediate_process(DB *db, Page **pp, size_t pos, DBT *key, size_t 
 
 	Page *parent = NULL;
 
-	size_t parent_index = ((uint32_t *)((uint8_t *)p->data))[1];
+	size_t parent_index = cast32(p->data, 0, 1);
 
 	if (parent_index) {
 		write_page(db, p, p->number);
@@ -510,7 +508,7 @@ int divide_intermediate_process(DB *db, Page **pp, size_t pos, DBT *key, size_t 
 		read_page(db, raw, parent_index);
 		parent = page_parse(raw, db->parameters.page_size);
 
-		size_t parent_vert_num = ((uint32_t *)((uint8_t *)parent->data))[2];
+		size_t parent_vert_num = cast32(parent->data, 0, 2);
 
 		size_t p_pos = find_pos(parent, &skey);
 
@@ -529,8 +527,8 @@ int divide_intermediate_process(DB *db, Page **pp, size_t pos, DBT *key, size_t 
 	} else {
 		create_root(db, &parent, &skey, p->number, s->number);
 
-		((uint32_t *)((uint8_t *)p->data))[1] = parent->number;
-		((uint32_t *)((uint8_t *)s->data))[1] = parent->number;
+		write32(p->data, 0, 1, parent->number);
+		write32(s->data, 0, 1, parent->number);
 
 		write_page(db, p, p->number);
 		write_page(db, s, s->number);
@@ -545,56 +543,55 @@ int divide_intermediate_process(DB *db, Page **pp, size_t pos, DBT *key, size_t 
 	free(skey.data);
 	skey.data = NULL;
 	return 0;
-
 }
 
 void fill_leaf_same(DB *db, Page *p, Page *node, DBT *key, DBT *data) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 	size_t begining = 3 * sizeof(uint32_t) + vert_num * sizeof(uint32_t);
 	size_t ending = db->parameters.page_size - cPagePadding;
 
 	size_t offset = 3 * sizeof(uint32_t);
 	void *node_data = node->data;
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-		((uint32_t *)((uint8_t *)node_data + offset))[0] = begining;
+		size_t key_offset = cast32(p->data, offset, 0);
+		write32(node_data, offset, 0, begining);
 
-		size_t k_size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		size_t k_size = cast32(p->data, key_offset, 0);
 		memcpy((uint8_t *)node_data + begining, (uint8_t *)p->data + key_offset, k_size + sizeof(uint32_t));
 
-		size_t data_offset = ((uint32_t *)((uint8_t *)p->data + key_offset + k_size + sizeof(uint32_t)))[0];
-		size_t d_size = ((uint32_t *)((uint8_t *)p->data + data_offset))[0];
+		size_t data_offset = cast32(p->data, key_offset + k_size + sizeof(uint32_t), 0);
+		size_t d_size = cast32(p->data, data_offset, 0);
 
 		if (!memcmp(key->data, (uint8_t *)p->data + key_offset + sizeof(uint32_t), min(key->size, k_size)) && key->size == k_size) {
 			ending -= data->size + sizeof(uint32_t);
-			((uint32_t *)((uint8_t *)node_data + ending))[0] = data->size;
+			write32(node_data, ending, 0, data->size);
 			memcpy((uint8_t *)node_data + ending + sizeof(uint32_t), data->data, data->size);
 		} else {
 			ending -= d_size + sizeof(uint32_t);
 			memcpy((uint8_t *)node_data + ending, (uint8_t *)p->data + data_offset, d_size + sizeof(uint32_t));
 		}
 
-		((uint32_t *)((uint8_t *)node_data + begining + k_size + sizeof(uint32_t)))[0] = ending;
+		write32(node_data, begining + k_size + sizeof(uint32_t), 0, ending);
 		begining += 2 * sizeof(uint32_t) + k_size;
 
 		offset += sizeof(uint32_t);
 	}
 
-	((uint16_t *)((void *)node_data))[0] = begining;
-	((uint16_t *)((void *)node_data))[1] = ending;
+	write16(node_data, 0, 0, begining);
+	write16(node_data, 0, 1, ending);
 }
 
 void insert_same(DB *db, Page **pp, DBT *key, DBT *data) {
 	Page *p = *pp;
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	Page *t = page_create(db->parameters.page_size, p->kind);
 	t->number = p->number;
 
-	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
+	write32(t->data, 0, 1, cast32(p->data, 0, 1));
 
-	((uint32_t *)((uint8_t *)t->data))[2] = vert_num;
+	write32(t->data, 0, 2, vert_num);
 
 	fill_leaf_same(db, p, t, key, data);
 
@@ -604,7 +601,7 @@ void insert_same(DB *db, Page **pp, DBT *key, DBT *data) {
 }
 
 void fill_leaf_delete(DB *db, Page *p, Page *node, DBT *key) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 	size_t begining = 3 * sizeof(uint32_t) + (vert_num - 1) * sizeof(uint32_t);
 	size_t ending = db->parameters.page_size - cPagePadding;
 
@@ -612,59 +609,59 @@ void fill_leaf_delete(DB *db, Page *p, Page *node, DBT *key) {
 	size_t new_offset = offset;
 	void *node_data = node->data;
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
+		size_t key_offset = cast32(p->data, offset, 0);
 
-		size_t k_size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		size_t k_size = cast32(p->data, key_offset, 0);
 
 		if (!memcmp(key->data, (uint8_t *)p->data + key_offset + sizeof(uint32_t), min(key->size, k_size)) && key->size == k_size) {
 			offset += sizeof(uint32_t);
 			continue;
 		}
 
-		((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
+		write32(node_data, new_offset, 0, begining);
 		memcpy((uint8_t *)node_data + begining, (uint8_t *)p->data + key_offset, k_size + sizeof(uint32_t));
 
-		size_t data_offset = ((uint32_t *)((uint8_t *)p->data + key_offset + k_size + sizeof(uint32_t)))[0];
-		size_t d_size = ((uint32_t *)((uint8_t *)p->data + data_offset))[0];
+		size_t data_offset = cast32(p->data, key_offset + k_size + sizeof(uint32_t), 0);
+		size_t d_size = cast32(p->data, data_offset, 0);
 
 		ending -= d_size + sizeof(uint32_t);
 		memcpy((uint8_t *)node_data + ending, (uint8_t *)p->data + data_offset, d_size + sizeof(uint32_t));
 
-		((uint32_t *)((uint8_t *)node_data + begining + k_size + sizeof(uint32_t)))[0] = ending;
+		write32(node_data, begining + k_size + sizeof(uint32_t), 0, ending);
 		begining += 2 * sizeof(uint32_t) + k_size;
 
 		offset += sizeof(uint32_t);
 		new_offset += sizeof(uint32_t);
 	}
 
-	((uint16_t *)((void *)node_data))[0] = begining;
-	((uint16_t *)((void *)node_data))[1] = ending;
+	write16(node_data, 0, 0, begining);
+	write16(node_data, 0, 1, ending);
 }
 
 void fill_intermediate_delete(Page *p, Page *node, size_t link) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 	size_t begining = 3 * sizeof(uint32_t) + (vert_num - 1) * sizeof(uint32_t);
 	
 	size_t offset = 3 * sizeof(uint32_t);
 	size_t new_offset = 3 * sizeof(uint32_t);
 	void *node_data = node->data;
 
-	size_t old_key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
+	size_t old_key_offset = cast32(p->data, offset, 0);
 	size_t old_begining = old_key_offset - sizeof(uint32_t);
 
-	((uint32_t *)((uint8_t *)node_data + begining))[0] = ((uint32_t *)((uint8_t *)p->data + old_begining))[0];
+	write32(node_data, begining, 0, cast32(p->data, old_begining, 0));
 	begining += sizeof(uint32_t);
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
+		size_t key_offset = cast32(p->data, offset, 0);
 
-		if (((uint32_t *)((uint8_t *)p->data + key_offset - sizeof(uint32_t)))[0] == link) {
+		if (cast32(p->data, key_offset - sizeof(uint32_t), 0) == link) {
 			offset += sizeof(uint32_t);
 			continue;
 		}
 
-		((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
+		write32(node_data, new_offset, 0, begining);
 
-		size_t k_size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		size_t k_size = cast32(p->data, key_offset, 0);
 		memcpy((uint8_t *)node_data + begining, (uint8_t *)p->data + key_offset, k_size + 2 * sizeof(uint32_t));
 		
 		begining += 2 * sizeof(uint32_t) + k_size;
@@ -672,21 +669,21 @@ void fill_intermediate_delete(Page *p, Page *node, size_t link) {
 		new_offset += sizeof(uint32_t);
 	}
 
-	((uint16_t *)((void *)node_data))[0] = begining;
-	((uint16_t *)((void *)node_data))[1] = 0;
+	write16(node_data, 0, 0, begining);
+	write16(node_data, 0, 1, 0);
 }
 
 void delete_key_intermediate(DB *db, Page **pp, size_t link) {
 	Page *p = *pp;
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	Page *t = page_create(db->parameters.page_size, p->kind);
 	t->number = p->number;
 
-	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
+	write32(t->data, 0, 1, cast32(p->data, 0, 1));
 
-	((uint32_t *)((uint8_t *)t->data))[2] = vert_num - 1;
+	write32(t->data, 0, 2, vert_num - 1);
 
 	fill_intermediate_delete(p, t, link);
 
@@ -696,23 +693,23 @@ void delete_key_intermediate(DB *db, Page **pp, size_t link) {
 }
 
 void fill_fintermediate_delete(Page *p, Page *node) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2] - 1;
+	size_t vert_num = cast32(p->data, 0, 2) - 1;
 	size_t begining = 3 * sizeof(uint32_t) + vert_num * sizeof(uint32_t);
 	
 	size_t offset = 4 * sizeof(uint32_t);
 	size_t new_offset = 3 * sizeof(uint32_t);
 	void *node_data = node->data;
 
-	size_t old_key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
+	size_t old_key_offset = cast32(p->data, offset, 0);
 	size_t old_begining = old_key_offset - sizeof(uint32_t);
 
-	((uint32_t *)((uint8_t *)node_data + begining))[0] = ((uint32_t *)((uint8_t *)p->data + old_begining))[0];
+	write32(node_data, begining, 0, cast32(p->data, old_begining, 0));
 	begining += sizeof(uint32_t);
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-		((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
+		size_t key_offset = cast32(p->data, offset, 0);
+		write32(node_data, new_offset, 0, begining);
 
-		size_t k_size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		size_t k_size = cast32(p->data, key_offset, 0);
 		memcpy((uint8_t *)node_data + begining, (uint8_t *)p->data + key_offset, k_size + 2 * sizeof(uint32_t));
 		
 		begining += 2 * sizeof(uint32_t) + k_size;
@@ -720,21 +717,21 @@ void fill_fintermediate_delete(Page *p, Page *node) {
 		new_offset += sizeof(uint32_t);
 	}
 
-	((uint16_t *)((void *)node_data))[0] = begining;
-	((uint16_t *)((void *)node_data))[1] = 0;
+	write16(node_data, 0, 0, begining);
+	write16(node_data, 0, 1, 0);
 }
 
 void delete_first_intermediate(DB *db, Page **pp) {
 	Page *p = *pp;
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	Page *t = page_create(db->parameters.page_size, p->kind);
 	t->number = p->number;
 
-	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
+	write32(t->data, 0, 1, cast32(p->data, 0, 1));
 
-	((uint32_t *)((uint8_t *)t->data))[2] = vert_num - 1;
+	write32(t->data, 0, 2, vert_num - 1);
 
 	fill_fintermediate_delete(p, t);
 
@@ -744,23 +741,23 @@ void delete_first_intermediate(DB *db, Page **pp) {
 }
 
 void fill_lintermediate_delete(Page *p, Page *node) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2] - 1;
+	size_t vert_num = cast32(p->data, 0, 2) - 1;
 	size_t begining = 3 * sizeof(uint32_t) + vert_num * sizeof(uint32_t);
 	
 	size_t offset = 3 * sizeof(uint32_t);
 	size_t new_offset = 3 * sizeof(uint32_t);
 	void *node_data = node->data;
 
-	size_t old_key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
+	size_t old_key_offset = cast32(p->data, offset, 0);
 	size_t old_begining = old_key_offset - sizeof(uint32_t);
 
-	((uint32_t *)((uint8_t *)node_data + begining))[0] = ((uint32_t *)((uint8_t *)p->data + old_begining))[0];
+	write32(node_data, begining, 0, cast32(p->data, old_begining, 0));
 	begining += sizeof(uint32_t);
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-		((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
+		size_t key_offset = cast32(p->data, offset, 0);
+		write32(node_data, new_offset, 0, begining);
 
-		size_t k_size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		size_t k_size = cast32(p->data, key_offset, 0);
 		memcpy((uint8_t *)node_data + begining, (uint8_t *)p->data + key_offset, k_size + 2 * sizeof(uint32_t));
 		
 		begining += 2 * sizeof(uint32_t) + k_size;
@@ -768,21 +765,21 @@ void fill_lintermediate_delete(Page *p, Page *node) {
 		new_offset += sizeof(uint32_t);
 	}
 
-	((uint16_t *)((void *)node_data))[0] = begining;
-	((uint16_t *)((void *)node_data))[1] = 0;
+	write16(node_data, 0, 0, begining);
+	write16(node_data, 0, 1, 0);
 }
 
 void delete_last_intermediate(DB *db, Page **pp) {
 	Page *p = *pp;
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	Page *t = page_create(db->parameters.page_size, p->kind);
 	t->number = p->number;
 
-	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
+	write32(t->data, 0, 1, cast32(p->data, 0, 1));
 
-	((uint32_t *)((uint8_t *)t->data))[2] = vert_num - 1;
+	write32(t->data, 0, 2, vert_num - 1);
 
 	fill_lintermediate_delete(p, t);
 
@@ -794,14 +791,14 @@ void delete_last_intermediate(DB *db, Page **pp) {
 void delete_key_leaf(DB *db, Page **pp, DBT *key) {
 	Page *p = *pp;
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	Page *t = page_create(db->parameters.page_size, p->kind);
 	t->number = p->number;
 
-	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
+	write32(t->data, 0, 1, cast32(p->data, 0, 1));
 
-	((uint32_t *)((uint8_t *)t->data))[2] = vert_num - 1;
+	write32(t->data, 0, 2, vert_num - 1);
 
 	fill_leaf_delete(db, p, t, key);
 
@@ -811,19 +808,19 @@ void delete_key_leaf(DB *db, Page **pp, DBT *key) {
 }
 
 void find_links(Page *p, uint32_t **plinks) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	uint32_t *links = (uint32_t *)malloc((vert_num + 1) * sizeof(uint32_t));
 
 	size_t offset = 3 * sizeof(uint32_t);
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-		links[i] = ((uint32_t *)((uint8_t *)p->data + key_offset - sizeof(uint32_t)))[0];
+		size_t key_offset = cast32(p->data, offset, 0);
+		links[i] = cast32(p->data, key_offset - sizeof(uint32_t), 0);
 		offset += sizeof(uint32_t);
 	}
 
-	size_t begining = ((uint16_t *)((uint8_t *)p->data))[0];
-	links[vert_num] = ((uint32_t *)((uint8_t *)p->data + begining - sizeof(uint32_t)))[0];
+	size_t begining = cast16(p->data, 0, 0);
+	links[vert_num] = cast32(p->data, begining - sizeof(uint32_t), 0);
 
 	*plinks = links;
 }
@@ -839,8 +836,8 @@ size_t find_sibling(DB *db, const uint32_t *links, uint32_t val, size_t size) {
 		if (i && links[i - 1] == val) {
 			read_page(db, raw, links[i]);
 			Page *p = page_parse(raw, db->parameters.page_size);
-			if (((uint32_t *)((uint8_t *)p->data))[2] > max_size) {
-				max_size = ((uint32_t *)((uint8_t *)p->data))[2];
+			if (cast32(p->data, 0, 2) > max_size) {
+				max_size = cast32(p->data, 0, 2);
 				res = i;
 			}
 			break;
@@ -848,8 +845,8 @@ size_t find_sibling(DB *db, const uint32_t *links, uint32_t val, size_t size) {
 		if (i < size - 1 && links[i + 1] == val) {
 			read_page(db, raw, links[i]);
 			Page *p = page_parse(raw, db->parameters.page_size);
-			if (((uint32_t *)((uint8_t *)p->data))[2] > max_size) {
-				max_size = ((uint32_t *)((uint8_t *)p->data))[2];
+			if (cast32(p->data, 0, 2) > max_size) {
+				max_size = cast32(p->data, 0, 2);
 				res = i;
 			}
 			++i;
@@ -861,26 +858,26 @@ size_t find_sibling(DB *db, const uint32_t *links, uint32_t val, size_t size) {
 }
 
 void find_first_leaf(Page *p, DBT *key, DBT *data) {
-	size_t key_offset = ((uint32_t *)((uint8_t *)p->data))[3];
-	key->size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+	size_t key_offset = cast32(p->data, 0, 3);
+	key->size = cast32(p->data, key_offset, 0);
 	key->data = (void *)malloc(key->size);
 	memcpy(key->data, (uint8_t *)p->data + key_offset + sizeof(uint32_t), key->size);
 
-	size_t data_offset = ((uint32_t *)((uint8_t *)p->data + key_offset + key->size + sizeof(uint32_t)))[0];
-	data->size = ((uint32_t *)((uint8_t *)p->data + data_offset))[0];
+	size_t data_offset = cast32(p->data, key_offset + key->size + sizeof(uint32_t), 0);
+	data->size = cast32(p->data, data_offset, 0);
 	data->data = (void *)malloc(data->size);
 	memcpy(data->data, (uint8_t *)p->data + data_offset + sizeof(uint32_t), data->size);
 }
 
 void find_last_leaf(Page *p, DBT *key, DBT *data) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
-	size_t key_offset = ((uint32_t *)((uint8_t *)p->data))[2 + vert_num];
-	key->size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+	size_t vert_num = cast32(p->data, 0, 2);
+	size_t key_offset = cast32(p->data, 0, 2 + vert_num);
+	key->size = cast32(p->data, key_offset, 0);
 	key->data = (void *)malloc(key->size);
 	memcpy(key->data, (uint8_t *)p->data + key_offset + sizeof(uint32_t), key->size);
 
-	size_t data_offset = ((uint32_t *)((uint8_t *)p->data + key_offset + key->size + sizeof(uint32_t)))[0];
-	data->size = ((uint32_t *)((uint8_t *)p->data + data_offset))[0];
+	size_t data_offset = cast32(p->data, key_offset + key->size + sizeof(uint32_t), 0);
+	data->size = cast32(p->data, data_offset, 0);
 	data->data = (void *)malloc(data->size);
 	memcpy(data->data, (uint8_t *)p->data + data_offset + sizeof(uint32_t), data->size);
 }
@@ -888,14 +885,14 @@ void find_last_leaf(Page *p, DBT *key, DBT *data) {
 void redistribute_keys_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 	Page *p = *pp, *s = *ps, *parent = *pparent;
 
-	size_t p_vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
-	size_t s_vert_num = ((uint32_t *)((uint8_t *)s->data))[2];
+	size_t p_vert_num = cast32(p->data, 0, 2);
+	size_t s_vert_num = cast32(s->data, 0, 2);
 
-	size_t p_key_offset = ((uint32_t *)((uint8_t *)p->data))[2 + p_vert_num];
-	size_t s_key_offset = ((uint32_t *)((uint8_t *)s->data))[3];
+	size_t p_key_offset = cast32(p->data, 0, 2 + p_vert_num);
+	size_t s_key_offset = cast32(s->data, 0, 3);
 
-	size_t p_size = ((uint32_t *)((uint8_t *)p->data + p_key_offset))[0];
-	size_t s_size = ((uint32_t *)((uint8_t *)s->data + s_key_offset))[0];
+	size_t p_size = cast32(p->data, p_key_offset, 0);
+	size_t s_size = cast32(s->data, s_key_offset, 0);
 
 	int n = memcmp((uint8_t *)p->data + p_key_offset + sizeof(uint32_t),
 				   (uint8_t *)s->data + s_key_offset + sizeof(uint32_t), 
@@ -936,7 +933,7 @@ void redistribute_keys_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 		find_first_leaf(p, &key, &data);
 	}
 
-	if (((uint32_t *)((uint8_t *)parent->data))[2]) {
+	if (cast32(parent->data, 0, 2)) {
 		size_t pos = find_pos(parent, &key);
 		insert_into_intermediate(db, &parent, pos, &key, r_link);
 	} else {
@@ -951,31 +948,31 @@ void redistribute_keys_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 }
 
 size_t find_first_intermediate(Page *p, DBT *key) {
-	size_t key_offset = ((uint32_t *)((uint8_t *)p->data))[3];
-	key->size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+	size_t key_offset = cast32(p->data, 0, 3);
+	key->size = cast32(p->data, key_offset, 0);
 	key->data = (void *)malloc(key->size);
 	memcpy(key->data, (uint8_t *)p->data + key_offset + sizeof(uint32_t), key->size);
-	return ((uint32_t *)((uint8_t *)p->data + key_offset - sizeof(uint32_t)))[0];
+	return cast32(p->data, key_offset - sizeof(uint32_t), 0);
 }
 
 size_t find_last_intermediate(Page *p, DBT *key) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
-	size_t key_offset = ((uint32_t *)((uint8_t *)p->data))[2 + vert_num];
-	key->size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+	size_t vert_num = cast32(p->data, 0, 2);
+	size_t key_offset = cast32(p->data, 0, 2 + vert_num);
+	key->size = cast32(p->data, key_offset, 0);
 	key->data = (void *)malloc(key->size);
 	memcpy(key->data, (uint8_t *)p->data + key_offset + sizeof(uint32_t), key->size);
-	return ((uint32_t *)((uint8_t *)p->data + key_offset + key->size + sizeof(uint32_t)))[0];
+	return cast32(p->data, key_offset + key->size + sizeof(uint32_t), 0);
 }
 
 void find_key_intermediate(Page *p, size_t link, DBT *key) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 	
 	size_t offset = 3 * sizeof(uint32_t);
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
+		size_t key_offset = cast32(p->data, offset, 0);
 
-		if (((uint32_t *)((uint8_t *)p->data + key_offset - sizeof(uint32_t)))[0] == link) {
-			key->size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		if (cast32(p->data, key_offset - sizeof(uint32_t), 0) == link) {
+			key->size = cast32(p->data, key_offset, 0);
 			key->data = (void *)malloc(key->size);
 			memcpy(key->data, (uint8_t *)p->data + key_offset + sizeof(uint32_t), key->size);
 			return;
@@ -986,32 +983,32 @@ void find_key_intermediate(Page *p, size_t link, DBT *key) {
 }
 
 void fill_fintermediate(Page *p, Page *node, DBT *key, size_t link) {
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 	size_t begining = 3 * sizeof(uint32_t) + (vert_num + 1) * sizeof(uint32_t);
 	
 	size_t offset = 3 * sizeof(uint32_t);
 	size_t new_offset = 3 * sizeof(uint32_t);
 	void *node_data = node->data;
 
-	size_t old_key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
+	size_t old_key_offset = cast32(p->data, offset, 0);
 	size_t old_begining = old_key_offset - sizeof(uint32_t);
 	
-	((uint32_t *)((uint8_t *)node_data + begining))[0] = link;
+	write32(node_data, begining, 0, link);
 	begining += sizeof(uint32_t);
-	((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
-	((uint32_t *)((uint8_t *)node_data + begining))[0] = key->size;
+	write32(node_data, new_offset, 0, begining);
+	write32(node_data, begining, 0, key->size);
 	begining += sizeof(uint32_t);
 	memcpy((uint8_t *)node_data + begining, key->data, key->size);
 	begining += key->size;
 
-	((uint32_t *)((uint8_t *)node_data + begining))[0] = ((uint32_t *)((uint8_t *)p->data + old_begining))[0];
+	write32(node_data, begining, 0, cast32(p->data, old_begining, 0));
 	begining += sizeof(uint32_t);
 	new_offset += sizeof(uint32_t);
 	for (size_t i = 0; i < vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-		((uint32_t *)((uint8_t *)node_data + new_offset))[0] = begining;
+		size_t key_offset = cast32(p->data, offset, 0);
+		write32(node_data, new_offset, 0, begining);
 
-		size_t k_size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+		size_t k_size = cast32(p->data, key_offset, 0);
 		memcpy((uint8_t *)node_data + begining, (uint8_t *)p->data + key_offset, k_size + 2 * sizeof(uint32_t));
 		
 		begining += 2 * sizeof(uint32_t) + k_size;
@@ -1019,19 +1016,19 @@ void fill_fintermediate(Page *p, Page *node, DBT *key, size_t link) {
 		new_offset += sizeof(uint32_t);
 	}
 
-	((uint16_t *)((void *)node_data))[0] = begining;
-	((uint16_t *)((void *)node_data))[1] = 0;
+	write16(node_data, 0, 0, begining);
+	write16(node_data, 0, 1, 0);
 }
 
 void insert_first_into_intermediate(DB *db, Page **pparent, DBT *key, size_t link) {
 	Page *p = *pparent;
 	Page *t = page_create(db->parameters.page_size, p->kind);
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	t->number = p->number;
-	((uint32_t *)((void *)t->data))[1] = ((uint32_t *)((void *)p->data))[1];
-	((uint32_t *)((uint8_t *)t->data))[2] = vert_num + 1;
+	write32(t->data, 0, 1, cast32(p->data, 0, 1));
+	write32(t->data, 0, 2, vert_num + 1);
 
 	fill_fintermediate(p, t, key, link);
 
@@ -1043,14 +1040,14 @@ void insert_first_into_intermediate(DB *db, Page **pparent, DBT *key, size_t lin
 void redistribute_keys_intermediate(DB *db, Page **pp, Page **ps, Page **pparent) {
 	Page *p = *pp, *s = *ps, *parent = *pparent;
 
-	size_t p_vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
-	size_t s_vert_num = ((uint32_t *)((uint8_t *)s->data))[2];
+	size_t p_vert_num = cast32(p->data, 0, 2);
+	size_t s_vert_num = cast32(s->data, 0, 2);
 
-	size_t p_key_offset = ((uint32_t *)((uint8_t *)p->data))[2 + p_vert_num];
-	size_t s_key_offset = ((uint32_t *)((uint8_t *)s->data))[3];
+	size_t p_key_offset = cast32(p->data, 0, 2 + p_vert_num);
+	size_t s_key_offset = cast32(s->data, 0, 3);
 
-	size_t p_size = ((uint32_t *)((uint8_t *)p->data + p_key_offset))[0];
-	size_t s_size = ((uint32_t *)((uint8_t *)s->data + s_key_offset))[0];
+	size_t p_size = cast32(p->data, p_key_offset, 0);
+	size_t s_size = cast32(s->data, s_key_offset, 0);
 
 	int n = memcmp((uint8_t *)p->data + p_key_offset + sizeof(uint32_t),
 				   (uint8_t *)s->data + s_key_offset + sizeof(uint32_t), 
@@ -1093,7 +1090,7 @@ void redistribute_keys_intermediate(DB *db, Page **pp, Page **ps, Page **pparent
 
 	delete_key_intermediate(db, &parent, l_link);
 
-	if (((uint32_t *)((uint8_t *)parent->data))[2]) {
+	if (cast32(parent->data, 0, 2)) {
 		size_t pos = find_pos(parent, &key);
 		insert_into_intermediate(db, &parent, pos, &key, r_link);
 	} else {
@@ -1111,14 +1108,14 @@ void handle_intermediate(DB *db, Page **pp);
 void merge_intermediate(DB *db, Page **pp, Page **ps, Page **pparent) {
 	Page *p = *pp, *s = *ps, *parent = *pparent;
 
-	size_t p_vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
-	size_t s_vert_num = ((uint32_t *)((uint8_t *)s->data))[2];
+	size_t p_vert_num = cast32(p->data, 0, 2);
+	size_t s_vert_num = cast32(s->data, 0, 2);
 
-	size_t p_key_offset = ((uint32_t *)((uint8_t *)p->data))[2 + p_vert_num];
-	size_t s_key_offset = ((uint32_t *)((uint8_t *)s->data))[3];
+	size_t p_key_offset = cast32(p->data, 0, 2 + p_vert_num);
+	size_t s_key_offset = cast32(s->data, 0, 3);
 
-	size_t p_size = ((uint32_t *)((uint8_t *)p->data + p_key_offset))[0];
-	size_t s_size = ((uint32_t *)((uint8_t *)s->data + s_key_offset))[0];
+	size_t p_size = cast32(p->data, p_key_offset, 0);
+	size_t s_size = cast32(s->data, s_key_offset, 0);
 
 	int n = memcmp((uint8_t *)p->data + p_key_offset + sizeof(uint32_t),
 				   (uint8_t *)s->data + s_key_offset + sizeof(uint32_t), 
@@ -1136,17 +1133,17 @@ void merge_intermediate(DB *db, Page **pp, Page **ps, Page **pparent) {
 
 	/* merging */
 	{
-		size_t key_offset = ((uint32_t *)((uint8_t *)ms->data))[3];
-		size_t link = ((uint32_t *)((uint8_t *)ms->data + key_offset - sizeof(uint32_t)))[0];
+		size_t key_offset = cast32(ms->data, 0, 3);
+		size_t link = cast32(ms->data, key_offset - sizeof(uint32_t), 0);
 		insert_into_intermediate(db, &mp, mp_vert_num, &pkey, link);
 		free(pkey.data);
 	}
 	for (size_t i = 1; i <= ms_vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)ms->data))[2 + i];
-		key.size = ((uint32_t *)((uint8_t *)ms->data + key_offset))[0];
+		size_t key_offset = cast32(ms->data, 0, 2 + i);
+		key.size = cast32(ms->data, key_offset, 0);
 		key.data = (void *)malloc(key.size);
 		memcpy(key.data, (uint8_t *)ms->data + key_offset + sizeof(uint32_t), key.size);
-		size_t link = ((uint32_t *)((uint8_t *)ms->data + key_offset + key.size + sizeof(uint32_t)))[0];
+		size_t link = cast32(ms->data, key_offset + key.size + sizeof(uint32_t), 0);
 
 		insert_into_intermediate(db, &mp, mp_vert_num + i, &key, link);
 		free(key.data);
@@ -1155,7 +1152,7 @@ void merge_intermediate(DB *db, Page **pp, Page **ps, Page **pparent) {
 	write_parents(db, mp);
 	write_page(db, mp, mp->number);
 
-	size_t parent_vert_num = ((uint32_t *)((uint8_t *)parent->data))[2];
+	size_t parent_vert_num = cast32(parent->data, 0, 2);
 
 	if (parent_vert_num == 1) {
 		mp->kind = cPageRoot;
@@ -1184,13 +1181,13 @@ void merge_intermediate(DB *db, Page **pp, Page **ps, Page **pparent) {
 
 void handle_intermediate(DB *db, Page **pp) {
 	Page *p = *pp;
-	size_t parent_index = ((uint32_t *)((uint8_t *)p->data))[1];
+	size_t parent_index = cast32(p->data, 0, 1);
 
 	void *raw_parent = (void *)malloc(db->parameters.page_size);
 	read_page(db, raw_parent, parent_index);
 	Page *parent = page_parse(raw_parent, db->parameters.page_size);
 
-	size_t parent_vert_num = ((uint32_t *)((uint8_t *)parent->data))[2];
+	size_t parent_vert_num = cast32(parent->data, 0, 2);
 
 	uint32_t *links;
 
@@ -1202,7 +1199,7 @@ void handle_intermediate(DB *db, Page **pp) {
 	read_page(db, raw_sibling, sibling_index);
 	Page *s = page_parse(raw_sibling, db->parameters.page_size);
 
-	size_t sibling_vert_num = ((uint32_t *)((uint8_t *)s->data))[2];
+	size_t sibling_vert_num = cast32(s->data, 0, 2);
 
 	/* case if can redistribute */
 	if (sibling_vert_num > cPageNodesDown) {
@@ -1229,14 +1226,14 @@ void handle_intermediate(DB *db, Page **pp) {
 void merge_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 	Page *p = *pp, *s = *ps, *parent = *pparent;
 
-	size_t p_vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
-	size_t s_vert_num = ((uint32_t *)((uint8_t *)s->data))[2];
+	size_t p_vert_num = cast32(p->data, 0, 2);
+	size_t s_vert_num = cast32(s->data, 0, 2);
 
-	size_t p_key_offset = ((uint32_t *)((uint8_t *)p->data))[2 + p_vert_num];
-	size_t s_key_offset = ((uint32_t *)((uint8_t *)s->data))[3];
+	size_t p_key_offset = cast32(p->data, 0, 2 + p_vert_num);
+	size_t s_key_offset = cast32(s->data, 0, 3);
 
-	size_t p_size = ((uint32_t *)((uint8_t *)p->data + p_key_offset))[0];
-	size_t s_size = ((uint32_t *)((uint8_t *)s->data + s_key_offset))[0];
+	size_t p_size = cast32(p->data, p_key_offset, 0);
+	size_t s_size = cast32(s->data, s_key_offset, 0);
 
 	int n = memcmp((uint8_t *)p->data + p_key_offset + sizeof(uint32_t),
 				   (uint8_t *)s->data + s_key_offset + sizeof(uint32_t), 
@@ -1252,12 +1249,12 @@ void merge_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 
 	/* merging */
 	for (size_t i = 0; i < m_vert_num; ++i) {
-		size_t key_offset = ((uint32_t *)((uint8_t *)ms->data))[3 + i];
-		key.size = ((uint32_t *)((uint8_t *)ms->data + key_offset))[0];
+		size_t key_offset = cast32(ms->data, 0, 3 + i);
+		key.size = cast32(ms->data, key_offset, 0);
 		key.data = (void *)malloc(key.size);
 		memcpy(key.data, (uint8_t *)ms->data + key_offset + sizeof(uint32_t), key.size);
-		size_t data_offset = ((uint32_t *)((uint8_t *)ms->data + key_offset + key.size + sizeof(uint32_t)))[0];
-		data.size = ((uint32_t *)((uint8_t *)ms->data + data_offset))[0];
+		size_t data_offset = cast32(ms->data, key_offset + key.size + sizeof(uint32_t), 0);
+		data.size = cast32(ms->data, data_offset, 0);
 		data.data = (void *)malloc(data.size);
 		memcpy(data.data, (uint8_t *)ms->data + data_offset + sizeof(uint32_t), data.size);
 		size_t pos = find_pos(mp, &key);
@@ -1268,7 +1265,7 @@ void merge_leaf(DB *db, Page **pp, Page **ps, Page **pparent) {
 	free_index(db, ms->number);
 	write_page(db, mp, mp->number);
 
-	size_t parent_vert_num = ((uint32_t *)((uint8_t *)parent->data))[2];
+	size_t parent_vert_num = cast32(parent->data, 0, 2);
 
 	if (parent_vert_num == 1) {
 		mp->kind = cPageRootLeaf;
@@ -1305,14 +1302,14 @@ int b_insert(DB *db, DBT *key, DBT *data) {
 
 	if (!p) { return -1; }
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	/* case if key exists */
 	{
 		size_t offset = 3 * sizeof(uint32_t);
 		for (size_t i = 0; i < vert_num; ++i) {
-			size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-			size_t size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+			size_t key_offset = cast32(p->data, offset, 0);
+			size_t size = cast32(p->data, key_offset, 0);
 			int n = memcmp((uint8_t *)p->data + key_offset + sizeof(uint32_t), key->data, min(size, key->size));
 			if (!n && size == key->size) {
 				insert_same(db, &p, key, data);
@@ -1342,7 +1339,7 @@ int b_insert(DB *db, DBT *key, DBT *data) {
 		return 0;
 	}
 
-	size_t parent_index = ((uint32_t *)((uint8_t *)p->data))[1];
+	size_t parent_index = cast32(p->data, 0, 1);
 
 	if (!parent_index) {
 		// root leaf full case
@@ -1358,20 +1355,20 @@ int b_insert(DB *db, DBT *key, DBT *data) {
 		/* creating and inserting into new root */
 		Page *root = NULL;
 
-		size_t skey_offset = ((uint32_t *)((uint8_t *)s->data + 3 * sizeof(uint32_t)))[0];
+		size_t skey_offset = cast32(s->data, 3 * sizeof(uint32_t), 0);
 
 		DBT skey = {
-			.size = ((uint32_t *)((uint8_t *)s->data + skey_offset))[0],
+			.size = cast32(s->data, skey_offset, 0),
 			.data = (uint8_t *)s->data + skey_offset + sizeof(uint32_t)
 		};
 
 		create_root(db, &root, &skey, p->number, s->number);
 
-		((uint32_t *)((void *)p->data))[1] = root->number;
-		((uint32_t *)((void *)s->data))[1] = root->number;
+		write32(p->data, 0, 1, root->number);
+		write32(s->data, 0, 1, root->number);
 
 		db->root = root;
-		((uint32_t *)((void *)db->meta->data))[2] = root->number;
+		write32(db->meta->data, 0, 2, root->number);
 		write_page(db, p, p->number);
 		write_page(db, s, s->number);
 		write_page(db, db->root, root->number);
@@ -1388,7 +1385,7 @@ int b_insert(DB *db, DBT *key, DBT *data) {
 	read_page(db, raw, parent_index);
 	Page *parent = page_parse(raw, db->parameters.page_size);
 
-	size_t parent_vert_num = ((uint32_t *)((uint8_t *)parent->data))[2];
+	size_t parent_vert_num = cast32(parent->data, 0, 2);
 	
 	/* case when parent is not full */
 	if (vert_num == cPageNodesUp && parent_vert_num < cPageNodesUp) {
@@ -1400,10 +1397,10 @@ int b_insert(DB *db, DBT *key, DBT *data) {
 		divide_leaf(db, &p, &s, pos, key, data);
 
 		/* inserting into parent part */
-		size_t skey_offset = ((uint32_t *)((uint8_t *)s->data + 3 * sizeof(uint32_t)))[0];
+		size_t skey_offset = cast32(s->data, 3 * sizeof(uint32_t), 0);
 
 		DBT skey = {
-			.size = ((uint32_t *)((uint8_t *)s->data + skey_offset))[0],
+			.size = cast32(s->data, skey_offset, 0),
 			.data = (uint8_t *)s->data + skey_offset + sizeof(uint32_t)
 		};
 
@@ -1437,10 +1434,10 @@ int b_insert(DB *db, DBT *key, DBT *data) {
 		divide_leaf(db, &p, &s, pos, key, data);
 
 		/* inserting into parent part */
-		size_t skey_offset = ((uint32_t *)((uint8_t *)s->data + 3 * sizeof(uint32_t)))[0];
+		size_t skey_offset = cast32(s->data, 3 * sizeof(uint32_t), 0);
 
 		DBT skey = {
-			.size = ((uint32_t *)((uint8_t *)s->data + skey_offset))[0],
+			.size = cast32(s->data, skey_offset, 0),
 			.data = (uint8_t *)s->data + skey_offset + sizeof(uint32_t)
 		};
 
@@ -1471,7 +1468,7 @@ int b_delete(DB *db, DBT *key) {
 
 	if (!p) { return -1; }
 
-	size_t vert_num = ((uint32_t *)((uint8_t *)p->data))[2];
+	size_t vert_num = cast32(p->data, 0, 2);
 
 	/* case if key doesn't exists */
 	{
@@ -1479,8 +1476,8 @@ int b_delete(DB *db, DBT *key) {
 
 		size_t offset = 3 * sizeof(uint32_t);
 		for (size_t i = 0; i < vert_num; ++i) {
-			size_t key_offset = ((uint32_t *)((uint8_t *)p->data + offset))[0];
-			size_t size = ((uint32_t *)((uint8_t *)p->data + key_offset))[0];
+			size_t key_offset = cast32(p->data, offset, 0);
+			size_t size = cast32(p->data, key_offset, 0);
 			int n = memcmp((uint8_t *)p->data + key_offset + sizeof(uint32_t), key->data, min(size, key->size));
 			if (!n && size == key->size) {
 				is_here = true;
@@ -1506,13 +1503,13 @@ int b_delete(DB *db, DBT *key) {
 		return 0;
 	}
 
-	size_t parent_index = ((uint32_t *)((uint8_t *)p->data))[1];
+	size_t parent_index = cast32(p->data, 0, 1);
 
 	void *raw_parent = (void *)malloc(db->parameters.page_size);
 	read_page(db, raw_parent, parent_index);
 	Page *parent = page_parse(raw_parent, db->parameters.page_size);
 
-	size_t parent_vert_num = ((uint32_t *)((uint8_t *)parent->data))[2];
+	size_t parent_vert_num = cast32(parent->data, 0, 2);
 
 	uint32_t *links;
 
@@ -1524,7 +1521,7 @@ int b_delete(DB *db, DBT *key) {
 	read_page(db, raw_sibling, sibling_index);
 	Page *sibling = page_parse(raw_sibling, db->parameters.page_size);
 
-	size_t sibling_vert_num = ((uint32_t *)((uint8_t *)sibling->data))[2];
+	size_t sibling_vert_num = cast32(sibling->data, 0, 2);
 
 	/* case if can redistribute */
 	if (vert_num == cPageNodesDown && sibling_vert_num > cPageNodesDown) {

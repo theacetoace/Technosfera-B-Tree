@@ -1,4 +1,5 @@
-#pragma once
+#ifndef MYDB_H
+#define MYDB_H
 
 #include <stddef.h>
 #include <sys/types.h>
@@ -60,3 +61,5 @@ int db_insert(DB *, void *, size_t, void * , size_t);
 /* Sync cached pages with disk */
 int db_sync(const DB *db);
 int db_flush(DB *db);
+
+#endif // MYDB_H

@@ -7,11 +7,11 @@
 #include "b-tree.h"
 
 int internal_db_select(DB *db, DBT *key, DBT *data) {
-	return b_select(db, key, data);
+    return b_select(db, key, data);
 }
 
 int internal_db_insert(DB *db, DBT *key, DBT *data) {
-	return b_insert(db, key, data);
+    return b_insert(db, key, data);
 }
 
 int internal_db_delete(DB *db, DBT *key) {
@@ -48,16 +48,16 @@ DB *dbopen(const char *file, DBC *conf) {
         read_page(result, meta_raw, 0);
         p = page_parse(meta_raw, result->parameters.page_size);
 
-        result->parameters.db_size    = ((uint32_t *)((void *)p->data))[0];
-        result->parameters.cache_size = ((uint32_t *)((void *)p->data))[1];
+        result->parameters.db_size    = cast32(p->data, 0, 0);
+        result->parameters.cache_size = cast32(p->data, 0, 1);
 
         result->meta = p;
 
-        if (((uint32_t *)((void *)result->meta->data))[2] != 0) {
+        if (cast32(result->meta->data, 0, 2) != 0) {
             void *root_raw = NULL;
 
             root_raw = (void *)malloc(result->parameters.page_size);
-            read_page(result, root_raw, ((uint32_t *)((void *)result->meta->data))[2]);
+            read_page(result, root_raw, cast32(result->meta->data, 0, 2));
             p = page_parse(root_raw, result->parameters.page_size);
 
             result->root = p;
@@ -73,10 +73,10 @@ DB *dbopen(const char *file, DBC *conf) {
     result->parameters.cache_size = conf->cache_size;
 
     Page *meta = page_create(result->parameters.page_size, cPageMetaData);
-    ((uint32_t *)((void *)meta->data))[0] = result->parameters.db_size;
-    ((uint32_t *)((void *)meta->data))[1] = result->parameters.cache_size;
+    write32(meta->data, 0, 0, result->parameters.db_size);
+    write32(meta->data, 0, 1, result->parameters.cache_size);
     size_t index_count = result->parameters.db_size / (result->parameters.page_size * 8 * (result->parameters.page_size - cPagePadding));
-    ((uint32_t *)((void *)meta->data))[3] = index_count;
+    write32(meta->data, 0, 3, index_count);
 
     for (size_t i = 1; i <= index_count; ++i) {
         Page *index = page_create(result->parameters.page_size, cPageIndex);
@@ -103,36 +103,36 @@ int db_close(DB *db) {
 
 int db_delete(DB *db, void *key, size_t key_len) {
     DBT keyt = {
-		.data = key,
-		.size = key_len
-	};
-	return db->delete(db, &keyt);
+        .data = key,
+        .size = key_len
+    };
+    return db->delete(db, &keyt);
 }
 
 int db_select(DB *db, void *key, size_t key_len,
-	   void **val, size_t *val_len) {
+       void **val, size_t *val_len) {
     DBT keyt = {
-		.data = key,
-		.size = key_len
-	};
+        .data = key,
+        .size = key_len
+    };
     DBT valt = {0, 0};
-	int rc = db->select(db, &keyt, &valt);
-	*val = valt.data;
-	*val_len = valt.size;
-	return rc;
+    int rc = db->select(db, &keyt, &valt);
+    *val = valt.data;
+    *val_len = valt.size;
+    return rc;
 }
 
 int db_insert(DB *db, void *key, size_t key_len,
-	   void *val, size_t val_len) {
+       void *val, size_t val_len) {
     DBT keyt = {
-		.data = key,
-		.size = key_len
-	};
+        .data = key,
+        .size = key_len
+    };
     DBT valt = {
-		.data = val,
-		.size = val_len
-	};
-	return db->insert(db, &keyt, &valt);
+        .data = val,
+        .size = val_len
+    };
+    return db->insert(db, &keyt, &valt);
 }
 
 int db_flush(DB *db) {

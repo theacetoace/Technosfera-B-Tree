@@ -1,4 +1,5 @@
-#pragma once
+#ifndef METADATA_H
+#define METADATA_H
 
 
 #include "mydb.h"
@@ -23,3 +24,5 @@ Metadata* metadata_create(const DBC config);
 
 /* load page: page size read from metadata */
 Metadata* metadata_parse(void* raw);
+
+#endif // METADATA_H

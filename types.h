@@ -1,36 +1,46 @@
-#pragma once
-
+#ifndef TYPES_H
+#define TYPES_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
 typedef struct {
 	void  *data;
-	size_t size;
+	uint32_t size;
 } DBT;
 
 typedef uint32_t PageSize;
 typedef uint32_t PageNumber;
 
 
-static const uint32_t cPageMagic      = 0xfacabada;
-static const uint32_t cPageRestOffset = 3 * sizeof(uint32_t);
+extern const uint32_t cPageMagic;
+extern const uint32_t cPageRestOffset;
 
-static const PageNumber cPageInvalid = 0xfefefefe;
+extern const PageNumber cPageInvalid;
 
 
 typedef uint32_t PageKind;
-static const uint32_t cPageMetaData     = 0xffffffffUL;
-static const uint32_t cPageIndex        = 0xeeeeeeeeUL;
-static const uint32_t cPageLeaf         = 0xddddddd4UL;
-static const uint32_t cPageIntermediate = 0xddddddd1UL;
-static const uint32_t cPageRoot         = 0xddddddd2UL;
-static const uint32_t cPageRootLeaf     = 0xddddddd6UL;
+extern const uint32_t cPageMetaData;
+extern const uint32_t cPageIndex;
+extern const uint32_t cPageLeaf;
+extern const uint32_t cPageIntermediate;
+extern const uint32_t cPageRoot;
+extern const uint32_t cPageRootLeaf;
 
-static const uint32_t cPageNodesDown = 4;
-static const uint32_t cPageNodesUp = cPageNodesDown << 1;
-static const uint32_t cPagePadding = 20;
+extern const uint32_t cPageNodesDown;
+extern const uint32_t cPageNodesUp;
+extern const uint32_t cPagePadding;
 
 #ifndef min
 #define min(a, b) (((a)<(b))?(a):(b))
 #endif
+
+extern uint32_t cast32(void *a, uint32_t offset, uint32_t ind);
+
+extern uint32_t cast16(void *a, uint32_t offset, uint32_t ind);
+
+extern void write32(void *a, uint32_t offset, uint32_t ind, uint32_t what);
+
+extern void write16(void *a, uint32_t offset, uint32_t ind, uint16_t what);
+
+#endif // TYPES_H
