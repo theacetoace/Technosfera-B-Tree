@@ -26,7 +26,7 @@ int write_page(const DB *db, const Page *p, uint32_t offset) {
 size_t find_free_index(DB *db) {
 	if (!db->meta) { return 0; }
 
-	size_t index_count = ((uint32_t *)((void *)db->meta->data))[3];
+	size_t index_count = cast32(db->meta->data, 0, 3);
 
 	void *raw = (void *)malloc(db->parameters.page_size);
 	
@@ -61,7 +61,7 @@ size_t find_free_index(DB *db) {
 void free_index(DB *db, size_t index) {
 	if (!db->meta) { return; }
 
-	size_t index_count = ((uint32_t *)((void *)db->meta->data))[3];
+	size_t index_count = cast32(db->meta->data, 0, 3);
 
 	index -= 1 + index_count;
 
