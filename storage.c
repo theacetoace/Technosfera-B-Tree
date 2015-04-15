@@ -79,7 +79,7 @@ void free_index(DB *db, size_t index) {
 	uint8_t pos = 1 << (index - (ind << 3));
 
 	((uint8_t *)data + ind)[0] &= ~pos;
-	write_page(db, pindex, ind_num);
+	write_page(db, pindex, 1 + ind_num);
 
 	free(raw);
 }
