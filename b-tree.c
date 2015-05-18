@@ -1091,10 +1091,10 @@ void redistribute_keys_intermediate(DB *db, Page **pp, Page **ps, Page **pparent
 	delete_key_intermediate(db, &parent, l_link);
 
 	if (cast32(parent->data, 0, 2)) {
-		size_t pos = find_pos(parent, &key);
-		insert_into_intermediate(db, &parent, pos, &key, r_link);
+		size_t pos = find_pos(parent, &pkey);
+		insert_into_intermediate(db, &parent, pos, &pkey, r_link);
 	} else {
-		create_intermediate(db, &parent, &key, l_link, r_link);
+		create_intermediate(db, &parent, &pkey, l_link, r_link);
 	}
 
 	free(pkey.data);
