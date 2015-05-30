@@ -1,9 +1,23 @@
 #include "storage.h"
+#include "cache.h"
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
 
 int read_page(const DB *db, void *raw, uint32_t offset) {
+	/*if (lseek(db->base, offset * db->parameters.page_size, SEEK_SET) == -1) {
+		return -1;
+	}
+
+	if (!offset && !db->parameters.page_size) {
+		return read(db->base, raw, cPagePadding);
+	}
+
+	return read(db->base, raw, db->parameters.page_size);*/
+	return read_cache(db, raw, offset);
+}
+
+int read_meta(const DB *db, void *raw, uint32_t offset) {
 	if (lseek(db->base, offset * db->parameters.page_size, SEEK_SET) == -1) {
 		return -1;
 	}
@@ -16,6 +30,15 @@ int read_page(const DB *db, void *raw, uint32_t offset) {
 }
 
 int write_page(const DB *db, const Page *p, uint32_t offset) {
+	/*if (lseek(db->base, offset * db->parameters.page_size, SEEK_SET) == -1) {
+		return -1;
+	}
+
+	return write(db->base, (void *)p, db->parameters.page_size);*/
+	return write_cache(db, p, offset);
+}
+
+int write_meta(const DB *db, const Page *p, uint32_t offset) {
 	if (lseek(db->base, offset * db->parameters.page_size, SEEK_SET) == -1) {
 		return -1;
 	}

@@ -5,6 +5,7 @@
 #include <memory.h>
 #include "storage.h"
 #include "b-tree.h"
+#include "cache.h"
 
 int internal_db_select(DB *db, DBT *key, DBT *data) {
     return b_select(db, key, data);
@@ -18,12 +19,17 @@ int internal_db_delete(DB *db, DBT *key) {
     return b_delete(db, key);
 }
 
+int internal_db_flush(DB *db) {
+    return flush_cache(db);
+}
+
 DB *dbopen(const char *file, DBC *conf) {
     DB *result = (DB*)malloc(sizeof(DB));
 
     result->insert = internal_db_insert;
     result->select = internal_db_select;
     result->delete = internal_db_delete;
+    result->sync   = internal_db_flush;
     
     struct stat sb;
     
@@ -35,7 +41,7 @@ DB *dbopen(const char *file, DBC *conf) {
         result->parameters.cache_size = 0;
 
         void *meta_raw = (void *)malloc(cPagePadding);
-        read_page(result, meta_raw, 0);
+        read_meta(result, meta_raw, 0);
         Page *p = page_parse(meta_raw, cPagePadding);
 
         if (!p) { return NULL; }
@@ -45,7 +51,7 @@ DB *dbopen(const char *file, DBC *conf) {
         free(meta_raw);
 
         meta_raw = (void *)malloc(result->parameters.page_size);
-        read_page(result, meta_raw, 0);
+        read_meta(result, meta_raw, 0);
         p = page_parse(meta_raw, result->parameters.page_size);
 
         result->parameters.db_size    = cast32(p->data, 0, 0);
@@ -57,10 +63,17 @@ DB *dbopen(const char *file, DBC *conf) {
             void *root_raw = NULL;
 
             root_raw = (void *)malloc(result->parameters.page_size);
-            read_page(result, root_raw, cast32(result->meta->data, 0, 2));
+            read_meta(result, root_raw, cast32(result->meta->data, 0, 2));
             p = page_parse(root_raw, result->parameters.page_size);
 
             result->root = p;
+        }
+
+        result->cache_size = result->parameters.cache_size / result->parameters.page_size;
+        result->cache = (void *)malloc(result->cache_size * result->parameters.page_size);
+        result->cache_id = (cache_struct *)malloc(result->cache_size * sizeof(cache_struct));
+        for (size_t i = 0; i < result->cache_size; ++i) {
+            result->cache_id[i].is_alive = false;
         }
 
         return result;
@@ -81,13 +94,20 @@ DB *dbopen(const char *file, DBC *conf) {
     for (size_t i = 1; i <= index_count; ++i) {
         Page *index = page_create(result->parameters.page_size, cPageIndex);
         memset((void *)(index->data), 0, (size_t)(result->parameters.page_size - cPagePadding));
-        write_page(result, index, i);
+        write_meta(result, index, i);
         free(index);
     }
 
-    write_page(result, meta, 0);
+    write_meta(result, meta, 0);
     result->meta = meta;
-    
+
+    result->cache_size = result->parameters.cache_size / result->parameters.page_size;
+    result->cache = (void *)malloc(result->cache_size * result->parameters.page_size);
+    result->cache_id = (cache_struct *)malloc(result->cache_size * sizeof(cache_struct));
+    for (size_t i = 0; i < result->cache_size; ++i) {
+        result->cache_id[i].is_alive = false;
+    }
+
     return result;
 }
 
@@ -97,6 +117,9 @@ DB *dbcreate(const char *file, DBC *conf) {
 
 
 int db_close(DB *db) {
+    db->sync(db);
+    free(db->cache);
+    free(db->cache_id);
     close(db->base);
     return 0;
 }

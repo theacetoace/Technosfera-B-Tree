@@ -43,6 +43,9 @@ typedef struct DB {
 	/* Private API */
 	/*     ...     */
     int base;
+    void *cache;
+    cache_struct *cache_id;
+    size_t cache_size;
     DBC parameters;
     Page *meta, *root;
 } DB; /* Need for supporting multiple backends (HASH/BTREE) */

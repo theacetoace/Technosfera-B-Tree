@@ -3,11 +3,19 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 typedef struct {
 	void  *data;
 	uint32_t size;
 } DBT;
+
+typedef struct {
+	uint32_t offset;
+	bool is_alive;
+	bool is_dirty;
+	size_t power;
+} cache_struct;
 
 typedef uint32_t PageSize;
 typedef uint32_t PageNumber;
